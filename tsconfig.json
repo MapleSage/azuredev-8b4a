@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "typeRoots": ["./node_modules/@types"],
+    "skipLibCheck": true
+  },
+  "exclude": [
+    "node_modules",
+    "../../node_modules"  // <-- make sure global workspace types are ignored
+  ]
+}
