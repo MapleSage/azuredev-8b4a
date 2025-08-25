@@ -1,12 +1,16 @@
-import MsalProviderWrapper from "../msal/MsalProviderWrapper";
+import "./globals.css";
+import { Providers } from "./providers";
+
+export const metadata = {
+  title: "SageInsure Chat",
+  description: "Insurance AI Assistant",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <MsalProviderWrapper>
-          {children}
-        </MsalProviderWrapper>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

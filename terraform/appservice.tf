@@ -24,6 +24,7 @@ resource "azurerm_linux_web_app" "api" {
       node_version   = (split("|", var.api_runtime_stack)[0] == "NODE")   ? split("|", var.api_runtime_stack)[1] : null
     }
     always_on = true
+    app_command_line = "gunicorn -w 4 -k uvicorn.workers.UvicornWorker app:app"
   }
 
   app_settings = {

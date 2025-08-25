@@ -25,14 +25,18 @@ interface Conversation {
   lastActivity: string;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_APP_URL;
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_APP_URL || "http://localhost:8000";
 
 export default function ChatPage() {
   const { instance, accounts } = useMsal();
-  const account = accounts[0] ? useAccount(accounts[0]) : null;
+  const firstAccount = accounts[0] ?? null;
+  const account = useAccount(firstAccount);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [selectedConversation, setSelectedConversation] = useState<
+    string | null
+  >(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -58,7 +62,7 @@ export default function ChatPage() {
       messages: [],
       lastActivity: "Just now",
     };
-    setConversations(prev => [newConversation, ...prev]);
+    setConversations((prev) => [newConversation, ...prev]);
     setSelectedConversation(newId);
   }, []);
 
@@ -70,13 +74,20 @@ export default function ChatPage() {
         id: Date.now().toString(),
         type: "user",
         content: message,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
       };
 
-      setConversations(prev =>
-        prev.map(conv =>
+      setConversations((prev) =>
+        prev.map((conv) =>
           conv.id === selectedConversation
-            ? { ...conv, messages: [...conv.messages, userMessage], lastActivity: "Just now" }
+            ? {
+                ...conv,
+                messages: [...conv.messages, userMessage],
+                lastActivity: "Just now",
+              }
             : conv
         )
       );
@@ -90,27 +101,16 @@ export default function ChatPage() {
         });
         const accessToken = tokenResponse.accessToken;
 
-        let uploadedFiles: string[] = [];
-        if (files?.length) {
-          uploadedFiles = await Promise.all(
-            files.map(async file => {
-              try {
-                const formData = new FormData();
-                formData.append("file", file);
-                const res = await fetch(`${API_BASE_URL}/upload`, {
-                  method: "POST",
-                  headers: { Authorization: `Bearer ${accessToken}` },
-                  body: formData,
-                });
-                const data = await res.json();
-                return data.fileUrl;
-              } catch (err) {
-                console.error("File upload failed:", file.name, err);
-                return null;
-              }
-            })
-          ).then(urls => urls.filter(Boolean) as string[]);
-        }
+        // Build conversation history for backend
+        const currentConversation = conversations.find(
+          (c) => c.id === selectedConversation
+        );
+        const conversation_history = (currentConversation?.messages || []).map(
+          (m) => ({
+            role: m.type === "user" ? "user" : "assistant",
+            content: m.content,
+          })
+        );
 
         const res = await fetch(`${API_BASE_URL}/chat`, {
           method: "POST",
@@ -118,27 +118,58 @@ export default function ChatPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({ message, files: uploadedFiles }),
+          body: JSON.stringify({ message, conversation_history }),
         });
-
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => res.statusText);
+          throw new Error(`API ${res.status}: ${errorText}`);
+        }
         const assistantData = await res.json();
 
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           type: "assistant",
-          content: assistantData.response,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          content: assistantData.answer ?? assistantData.response ?? "",
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
         };
 
-        setConversations(prev =>
-          prev.map(conv =>
+        setConversations((prev) =>
+          prev.map((conv) =>
             conv.id === selectedConversation
-              ? { ...conv, messages: [...conv.messages, assistantMessage], lastActivity: "Just now" }
+              ? {
+                  ...conv,
+                  messages: [...conv.messages, assistantMessage],
+                  lastActivity: "Just now",
+                }
               : conv
           )
         );
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error sending message:", err);
+        const errorMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          type: "assistant",
+          content:
+            `There was an error calling the API. ${err?.message || ""}`.trim(),
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.id === selectedConversation
+              ? {
+                  ...conv,
+                  messages: [...conv.messages, errorMessage],
+                  lastActivity: "Just now",
+                }
+              : conv
+          )
+        );
       } finally {
         setIsLoading(false);
       }
@@ -161,10 +192,15 @@ export default function ChatPage() {
 
           <div className="flex-1 flex flex-col">
             <ChatArea
-              conversation={conversations.find(c => c.id === selectedConversation) || null}
+              conversation={
+                conversations.find((c) => c.id === selectedConversation) || null
+              }
               isLoading={isLoading}
             />
-            <MessageInput onSendMessage={handleSendMessage} disabled={isLoading} />
+            <MessageInput
+              onSendMessage={handleSendMessage}
+              disabled={isLoading}
+            />
           </div>
         </div>
       </AuthenticatedTemplate>
@@ -173,8 +209,7 @@ export default function ChatPage() {
         <div className="flex items-center justify-center h-screen">
           <button
             onClick={() => instance.loginRedirect()}
-            className="btn-primary px-6 py-3 rounded-md"
-          >
+            className="btn-primary px-6 py-3 rounded-md">
             Sign in with SageInsure
           </button>
         </div>
