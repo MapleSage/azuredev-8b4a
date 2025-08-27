@@ -42,7 +42,7 @@
   - Set up access to existing Storage Account (policydocseedfa81f) via Managed Identity
   - _Requirements: 7.3, 7.4_
 
-- [-] 7. Build platform add-ons Terraform module
+- [x] 7. Build platform add-ons Terraform module
 
   - Configure Helm provider for Kubernetes deployments
   - Deploy NGINX Ingress Controller with TLS configuration
