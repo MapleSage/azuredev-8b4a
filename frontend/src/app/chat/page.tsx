@@ -12,14 +12,14 @@ import { ChatArea } from "../components/ChatArea";
 import { MessageInput } from "../components/MessageInput";
 
 interface Message {
-  id: string; // switched from number to string
+  id: string;
   type: "user" | "assistant";
   content: string;
   timestamp: string;
 }
 
 interface Conversation {
-  id: string; // switched from number to string
+  id: string;
   title: string;
   messages: Message[];
   lastActivity: string;
@@ -39,6 +39,7 @@ export default function ChatPage() {
   >(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // ✅ initialize a first conversation
   useEffect(() => {
     const initialConv: Conversation = {
       id: Date.now().toString(),
@@ -80,6 +81,7 @@ export default function ChatPage() {
         }),
       };
 
+      // ✅ update state safely without stale closures
       setConversations((prev) =>
         prev.map((conv) =>
           conv.id === selectedConversation
@@ -96,12 +98,12 @@ export default function ChatPage() {
 
       try {
         const tokenResponse = await instance.acquireTokenSilent({
-          scopes: ["https://graph.microsoft.com/.default"],
+          scopes: ["User.Read"],
           account,
         });
         const accessToken = tokenResponse.accessToken;
 
-        // Build conversation history for backend
+        // ✅ derive conversation inside callback to avoid stale state
         const currentConversation = conversations.find(
           (c) => c.id === selectedConversation
         );
@@ -120,16 +122,17 @@ export default function ChatPage() {
           },
           body: JSON.stringify({ message, conversation_history }),
         });
+
         if (!res.ok) {
-          const errorText = await res.text().catch(() => res.statusText);
-          throw new Error(`API ${res.status}: ${errorText}`);
+          throw new Error(`API ${res.status}: ${await res.text()}`);
         }
+
         const assistantData = await res.json();
 
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
           type: "assistant",
-          content: assistantData.answer ?? assistantData.response ?? "",
+          content: assistantData.answer || "No response received.",
           timestamp: new Date().toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
@@ -174,7 +177,7 @@ export default function ChatPage() {
         setIsLoading(false);
       }
     },
-    [selectedConversation, account, instance]
+    [selectedConversation, account, instance, conversations]
   );
 
   return (
@@ -189,7 +192,6 @@ export default function ChatPage() {
               onNewChat={handleNewChat}
             />
           </div>
-
           <div className="flex-1 flex flex-col">
             <ChatArea
               conversation={
@@ -208,7 +210,7 @@ export default function ChatPage() {
       <UnauthenticatedTemplate>
         <div className="flex items-center justify-center h-screen">
           <button
-            onClick={() => instance.loginRedirect()}
+            onClick={() => instance.loginRedirect({ scopes: ["User.Read"] })}
             className="btn-primary px-6 py-3 rounded-md">
             Sign in with SageInsure
           </button>

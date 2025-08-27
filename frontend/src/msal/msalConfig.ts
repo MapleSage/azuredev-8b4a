@@ -15,4 +15,8 @@ export const msalConfig: Configuration = {
   },
 };
 
-export const msalInstance = new PublicClientApplication(msalConfig);
+// Only create MSAL instance on client side
+export const msalInstance =
+  typeof window !== "undefined"
+    ? new PublicClientApplication(msalConfig)
+    : null;

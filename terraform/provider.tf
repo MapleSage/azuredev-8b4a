@@ -15,6 +15,14 @@ terraform {
     random = {
       source = "hashicorp/random"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.12"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.24"
+    }
   }
 }
 
@@ -32,3 +40,41 @@ provider "azuread" {
 }
 
 provider "azapi" {}
+
+# Helm provider configuration
+provider "helm" {
+  kubernetes {
+    host                   = module.aks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+    
+    exec {
+      api_version = "client.authentication.k8s.io/v1"
+      command     = "az"
+      args = [
+        "aks",
+        "get-credentials",
+        "--resource-group", data.azurerm_resource_group.existing.name,
+        "--name", module.aks.cluster_name,
+        "--format", "exec"
+      ]
+    }
+  }
+}
+
+# Kubernetes provider configuration
+provider "kubernetes" {
+  host                   = module.aks.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.aks.cluster_ca_certificate)
+  
+  exec {
+    api_version = "client.authentication.k8s.io/v1"
+    command     = "az"
+    args = [
+      "aks",
+      "get-credentials",
+      "--resource-group", data.azurerm_resource_group.existing.name,
+      "--name", module.aks.cluster_name,
+      "--format", "exec"
+    ]
+  }
+}

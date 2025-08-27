@@ -1,0 +1,82 @@
+# Default values for sageinsure-api
+replicaCount: 3
+
+image:
+  repository: sageinsure-api
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations:
+    azure.workload.identity/client-id: "e963ea14-9c63-4a32-b455-0b4047604b99"
+  name: "sageinsure-api-sa"
+
+podAnnotations:
+  azure.workload.identity/use: "true"
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+  hosts:
+    - host: api.sageinsure.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: sageinsure-api-tls
+      hosts:
+        - api.sageinsure.local
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Key Vault CSI configuration
+keyVault:
+  name: "kv-eedfa81f"
+  tenantId: "e9394f90-446d-41dd-8c8c-98ac08c5f090"
+  secrets:
+    - secretName: "AKS-AZURE-OPENAI-ENDPOINT"
+      mountPath: "/mnt/secrets/openai-endpoint"
+    - secretName: "AKS-AZURE-OPENAI-DEPLOYMENT"
+      mountPath: "/mnt/secrets/openai-deployment"
+    - secretName: "AKS-AZURE-SEARCH-ENDPOINT"
+      mountPath: "/mnt/secrets/search-endpoint"
+    - secretName: "AKS-AZURE-SEARCH-SERVICE"
+      mountPath: "/mnt/secrets/search-service"
+    - secretName: "AKS-AZURE-STORAGE-ENDPOINT"
+      mountPath: "/mnt/secrets/storage-endpoint"
+    - secretName: "AKS-AZURE-STORAGE-ACCOUNT"
+      mountPath: "/mnt/secrets/storage-account"

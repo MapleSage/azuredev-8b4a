@@ -1,21 +1,26 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from typing import List, Optional
+from dotenv import load_dotenv
 import os
 import json
 import logging
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from openai import AzureOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 from azure.search.documents import SearchClient
 from azure.core.credentials import AzureKeyCredential
 from azure.storage.blob import BlobServiceClient
 
-# Configure logging
+# Load environment variables
+load_dotenv()
+
+# Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
+# FastAPI app
 app = FastAPI(
     title="Azure Insurance Chat API",
     description="Backend API for insurance policy chat application",
@@ -23,7 +28,7 @@ app = FastAPI(
 )
 
 # -------------------------------
-# CORS Middleware (updated)
+# CORS Middleware
 # -------------------------------
 cors_origins_env = os.getenv(
     "CORS_ORIGINS",
@@ -102,10 +107,10 @@ def is_search_configured() -> bool:
 # RAG pipeline functions
 # -------------------------------
 async def search_policies(query: str, top_k: int = 5):
+    if not is_search_configured():
+        logger.warning("Azure Search not configured; returning no context")
+        return []
     try:
-        if not is_search_configured():
-            logger.warning("Azure Search not configured; returning no context")
-            return []
         search_client = get_search_client()
         results = search_client.search(
             search_text=query,
@@ -128,18 +133,18 @@ async def search_policies(query: str, top_k: int = 5):
         logger.error(f"Search error: {e}")
         return []
 
-async def generate_response(query: str, context_docs: List[dict], conversation_history: List[ChatMessage]):
+async def generate_response(query: str, context_docs: List[dict], conversation_history: Optional[List[ChatMessage]]):
+    conversation_history = conversation_history or []
+    if not is_openai_configured():
+        logger.warning("Azure OpenAI not configured; returning fallback answer")
+        fallback = (
+            "Developer mode: Azure OpenAI is not configured. "
+            "Please set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_DEPLOYMENT.\n\n"
+            f"Your question: {query}\n"
+            + ("\nNo policy context available." if not context_docs else "")
+        )
+        return fallback
     try:
-        if not is_openai_configured():
-            logger.warning("Azure OpenAI not configured; returning fallback answer")
-            fallback = (
-                "Developer mode: Azure OpenAI is not configured. "
-                "Please set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_DEPLOYMENT.\n\n"
-                f"Your question: {query}\n"
-                + ("\nNo policy context available." if not context_docs else "")
-            )
-            return fallback
-
         client = get_openai_client()
         context = "\n\n".join([
             f"Document {i+1} ({doc['category']}): {doc['content']}"
@@ -156,10 +161,14 @@ Guidelines:
 - Be specific about policy details, coverage, and requirements
 - Use clear, professional language
 - Cite which document(s) you're referencing when possible"""
-        messages = [{"role": "system", "content": system_message}]
-        for msg in conversation_history[-10:]:
-            messages.append({"role": msg.role, "content": msg.content})
-        messages.append({"role": "user", "content": query})
+        messages: List[ChatCompletionMessageParam] = [
+            ChatCompletionMessageParam(role="system", content=system_message)
+        ] + [
+            ChatCompletionMessageParam(role=msg.role, content=msg.content)
+            for msg in conversation_history[-10:]
+        ] + [
+            ChatCompletionMessageParam(role="user", content=query)
+        ]
         response = client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
             messages=messages,
@@ -167,7 +176,7 @@ Guidelines:
             temperature=0.3,
             top_p=0.95
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content or ""
     except Exception as e:
         logger.error(f"OpenAI error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate response")
@@ -194,7 +203,7 @@ async def chat(request: ChatRequest):
             {"id": doc["id"], "title": doc["title"], "category": doc["category"], "snippet": doc["content"]}
             for doc in context_docs
         ]
-        return ChatResponse(answer=answer, sources=sources, conversation_id=None)
+        return ChatResponse(answer=answer or "", sources=sources, conversation_id=None)
     except Exception as e:
         logger.error(f"Chat error: {e}")
         raise HTTPException(status_code=500, detail="Failed to process chat request")
@@ -202,7 +211,7 @@ async def chat(request: ChatRequest):
 @app.post("/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...), category: str = Form(...), title: str = Form(...)):
     try:
-        if not file.filename.endswith('.json'):
+        if not (file.filename or "").endswith(".json"):
             raise HTTPException(status_code=400, detail="Only JSON files are supported")
         content = await file.read()
         try:
@@ -238,4 +247,3 @@ async def list_documents():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
