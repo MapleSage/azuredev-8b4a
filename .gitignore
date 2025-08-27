@@ -82,11 +82,12 @@ Desktop.ini
 *.old
 ## Node (just in case mixed project)
 node_modules/
-# Endterraform/.terraform/
 # Terraform
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfplan
+tfplan
 crash.log
 override.tf
 override.tf.json
