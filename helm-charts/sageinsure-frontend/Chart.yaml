@@ -1,13 +1,14 @@
 apiVersion: v2
-name: sageinsure-api
-description: A Helm chart for SageInsure FastAPI backend application
+name: sageinsure-frontend
+description: A Helm chart for SageInsure Next.js frontend application
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
 keywords:
-  - fastapi
+  - nextjs
+  - frontend
   - insurance
-  - api
+  - react
 home: https://github.com/parvind/azure-insurance
 sources:
   - https://github.com/parvind/azure-insurance

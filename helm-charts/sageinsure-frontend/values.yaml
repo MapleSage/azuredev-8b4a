@@ -1,0 +1,163 @@
+# Default values for sageinsure-frontend
+replicaCount: 3
+
+image:
+  repository: sageinsureacr.azurecr.io/sageinsure-frontend
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  name: "sageinsure-frontend"
+
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+  name: http
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  hosts:
+    - host: sageinsure.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: sageinsure-frontend-tls
+      hosts:
+        - sageinsure.local
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - sageinsure-frontend
+          topologyKey: kubernetes.io/hostname
+
+# Application configuration
+app:
+  port: 3000
+  environment: production
+
+# Next.js configuration
+nextjs:
+  # Build-time environment variables
+  buildEnv:
+    NEXT_PUBLIC_API_URL: "https://api.sageinsure.local"
+    NEXT_PUBLIC_APP_NAME: "SageInsure"
+    NEXT_PUBLIC_APP_VERSION: "1.0.0"
+
+  # Runtime environment variables
+  runtimeEnv:
+    NODE_ENV: "production"
+    PORT: "3000"
+
+# Health check configuration
+healthCheck:
+  enabled: true
+  path: /api/health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  path: /api/ready
+  initialDelaySeconds: 15
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# CDN and static asset configuration
+cdn:
+  enabled: false
+  # Azure CDN endpoint for static assets
+  endpoint: ""
+  # Static asset paths to serve from CDN
+  staticPaths:
+    - "/_next/static/*"
+    - "/images/*"
+    - "/icons/*"
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  port: 9090
+  path: /metrics
+
+# Security headers
+security:
+  headers:
+    enabled: true
+    contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.sageinsure.local;"
+    xFrameOptions: "DENY"
+    xContentTypeOptions: "nosniff"
+    referrerPolicy: "strict-origin-when-cross-origin"
+
+# Performance configuration
+performance:
+  # Enable gzip compression
+  compression: true
+  # Cache control headers
+  caching:
+    static: "public, max-age=31536000, immutable"
+    dynamic: "public, max-age=0, must-revalidate"

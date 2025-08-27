@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sageinsure-frontend.fullname" . }}-config
+  labels:
+    {{- include "sageinsure-frontend.labels" . | nindent 4 }}
+data:
+  # Application configuration
+  APP_NAME: "sageinsure-frontend"
+  APP_VERSION: "{{ .Chart.AppVersion }}"
+  
+  # Next.js build-time environment variables
+  {{- range $key, $value := .Values.nextjs.buildEnv }}
+  {{ $key }}: "{{ $value }}"
+  {{- end }}
+  
+  # CDN configuration
+  {{- if .Values.cdn.enabled }}
+  CDN_ENABLED: "true"
+  CDN_ENDPOINT: "{{ .Values.cdn.endpoint }}"
+  {{- end }}
+  
+  # Performance configuration
+  {{- if .Values.performance.compression }}
+  COMPRESSION_ENABLED: "true"
+  {{- end }}
+  
+  # Cache control
+  CACHE_STATIC: "{{ .Values.performance.caching.static }}"
+  CACHE_DYNAMIC: "{{ .Values.performance.caching.dynamic }}"
+  
+  # Monitoring configuration
+  {{- if .Values.monitoring.enabled }}
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "{{ .Values.monitoring.port }}"
+  METRICS_PATH: "{{ .Values.monitoring.path }}"
+  {{- end }}
+  
+  # Health check configuration
+  {{- if .Values.healthCheck.enabled }}
+  HEALTH_CHECK_ENABLED: "true"
+  HEALTH_CHECK_PATH: "{{ .Values.healthCheck.path }}"
+  {{- end }}
+  
+  {{- if .Values.readinessProbe.enabled }}
+  READINESS_CHECK_ENABLED: "true"
+  READINESS_CHECK_PATH: "{{ .Values.readinessProbe.path }}"
+  {{- end }}

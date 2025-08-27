@@ -1,0 +1,38 @@
+{{- range $priority, $config := .Values.queue.workers }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sageinsure-worker.fullname" $ }}-queue-{{ $priority }}
+  labels:
+    {{- include "sageinsure-worker.labels" $ | nindent 4 }}
+    component: queue-worker
+    priority: {{ $priority }}
+spec:
+  replicas: {{ $config.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sageinsure-worker.selectorLabels" $ | nindent 6 }}
+      component: queue-worker
+      priority: {{ $priority }}
+  template:
+    metadata:
+      labels:
+        {{- include "sageinsure-worker.selectorLabels" $ | nindent 8 }}
+        component: queue-worker
+        priority: {{ $priority }}
+    spec:
+      serviceAccountName: {{ include "sageinsure-worker.serviceAccountName" $ }}
+      containers:
+        - name: queue-worker
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          command: ["python", "-m", "worker.queue_worker"]
+          args: ["--priority", "{{ $priority }}"]
+          env:
+            - name: QUEUE_PRIORITY
+              value: "{{ $priority }}"
+            - name: WORKER_TYPE
+              value: "queue"
+          resources:
+            {{- toYaml $config.resources | nindent 12 }}
+{{- end }}

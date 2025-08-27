@@ -1,31 +1,46 @@
 # Default values for sageinsure-api
-replicaCount: 3
+replicaCount: 2
 
 image:
-  repository: sageinsure-api
+  repository: sageinsureacr.azurecr.io/sageinsure-api
   pullPolicy: IfNotPresent
   tag: "latest"
 
+imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
 serviceAccount:
+  # Specifies whether a service account should be created
   create: true
+  # Annotations to add to the service account
   annotations:
-    azure.workload.identity/client-id: "e963ea14-9c63-4a32-b455-0b4047604b99"
-  name: "sageinsure-api-sa"
+    azure.workload.identity/client-id: "" # Will be set by Terraform
+  # The name of the service account to use.
+  name: "sageinsure-api"
 
 podAnnotations:
   azure.workload.identity/use: "true"
 
-podSecurityContext: {}
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  runAsUser: 1000
 
-securityContext: {}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
 
 service:
   type: ClusterIP
   port: 80
   targetPort: 8000
+  name: http
 
 ingress:
   enabled: true
@@ -33,6 +48,7 @@ ingress:
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
   hosts:
     - host: api.sageinsure.local
       paths:
@@ -45,38 +61,86 @@ ingress:
 
 resources:
   limits:
-    cpu: 500m
-    memory: 512Mi
+    cpu: 1000m
+    memory: 1Gi
   requests:
-    cpu: 100m
+    cpu: 200m
     memory: 256Mi
 
 autoscaling:
   enabled: true
   minReplicas: 2
   maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
 
 nodeSelector: {}
 
 tolerations: []
 
-affinity: {}
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - sageinsure-api
+          topologyKey: kubernetes.io/hostname
 
-# Key Vault CSI configuration
+# Application configuration
+app:
+  port: 8000
+  environment: production
+  logLevel: INFO
+
+# Health check configuration
+healthCheck:
+  enabled: true
+  path: /health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  path: /ready
+  initialDelaySeconds: 15
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Azure Key Vault integration
 keyVault:
+  enabled: true
   name: "kv-eedfa81f"
-  tenantId: "e9394f90-446d-41dd-8c8c-98ac08c5f090"
   secrets:
-    - secretName: "AKS-AZURE-OPENAI-ENDPOINT"
-      mountPath: "/mnt/secrets/openai-endpoint"
-    - secretName: "AKS-AZURE-OPENAI-DEPLOYMENT"
-      mountPath: "/mnt/secrets/openai-deployment"
-    - secretName: "AKS-AZURE-SEARCH-ENDPOINT"
-      mountPath: "/mnt/secrets/search-endpoint"
-    - secretName: "AKS-AZURE-SEARCH-SERVICE"
-      mountPath: "/mnt/secrets/search-service"
-    - secretName: "AKS-AZURE-STORAGE-ENDPOINT"
-      mountPath: "/mnt/secrets/storage-endpoint"
-    - secretName: "AKS-AZURE-STORAGE-ACCOUNT"
-      mountPath: "/mnt/secrets/storage-account"
+    - name: openai-api-key
+      key: OPENAI-API-KEY
+      envVar: OPENAI_API_KEY
+    - name: search-api-key
+      key: SEARCH-API-KEY
+      envVar: AZURE_SEARCH_API_KEY
+
+# Environment variables
+env:
+  - name: AZURE_SEARCH_ENDPOINT
+    value: "https://sageinsure-search.search.windows.net"
+  - name: AZURE_OPENAI_ENDPOINT
+    value: "https://sageinsure-openai.openai.azure.com"
+  - name: AZURE_STORAGE_ACCOUNT_NAME
+    value: "policydocseedfa81f"
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  port: 9090
+  path: /metrics
+
+# Service mesh configuration (if using Istio)
+serviceMesh:
+  enabled: false

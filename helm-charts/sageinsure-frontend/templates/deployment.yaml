@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "sageinsure-api.fullname" . }}
+  name: {{ include "sageinsure-frontend.fullname" . }}
   labels:
-    {{- include "sageinsure-api.labels" . | nindent 4 }}
+    {{- include "sageinsure-frontend.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "sageinsure-api.selectorLabels" . | nindent 6 }}
+      {{- include "sageinsure-frontend.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -19,13 +19,13 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "sageinsure-api.selectorLabels" . | nindent 8 }}
+        {{- include "sageinsure-frontend.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "sageinsure-api.serviceAccountName" . }}
+      serviceAccountName: {{ include "sageinsure-frontend.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -46,26 +46,19 @@ spec:
           env:
             - name: PORT
               value: "{{ .Values.app.port }}"
-            - name: ENVIRONMENT
-              value: "{{ .Values.app.environment }}"
-            - name: LOG_LEVEL
-              value: "{{ .Values.app.logLevel }}"
-            {{- range .Values.env }}
-            - name: {{ .name }}
-              value: "{{ .value }}"
+            - name: NODE_ENV
+              value: "{{ .Values.nextjs.runtimeEnv.NODE_ENV }}"
+            {{- range $key, $value := .Values.nextjs.buildEnv }}
+            - name: {{ $key }}
+              value: "{{ $value }}"
             {{- end }}
-            {{- if .Values.keyVault.enabled }}
-            {{- range .Values.keyVault.secrets }}
-            - name: {{ .envVar }}
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "sageinsure-api.fullname" $ }}-secrets
-                  key: {{ .name }}
-            {{- end }}
+            {{- range $key, $value := .Values.nextjs.runtimeEnv }}
+            - name: {{ $key }}
+              value: "{{ $value }}"
             {{- end }}
           envFrom:
             - configMapRef:
-                name: {{ include "sageinsure-api.fullname" . }}-config
+                name: {{ include "sageinsure-frontend.fullname" . }}-config
           {{- if .Values.healthCheck.enabled }}
           livenessProbe:
             httpGet:
@@ -91,22 +84,13 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            {{- if .Values.keyVault.enabled }}
-            - name: secrets-store
-              mountPath: "/mnt/secrets-store"
-              readOnly: true
-            {{- end }}
+            - name: nextjs-cache
+              mountPath: /app/.next/cache
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if .Values.keyVault.enabled }}
-        - name: secrets-store
-          csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: {{ include "sageinsure-api.fullname" . }}-secrets
-        {{- end }}
+        - name: nextjs-cache
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -1,0 +1,18 @@
+# Main TLS certificate for all SageInsure domains
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sageinsure-tls-cert
+  namespace: default
+spec:
+  secretName: sageinsure-tls-cert
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - sageinsure.local
+    - api.sageinsure.local
+    - grafana.sageinsure.local
+  usages:
+    - digital signature
+    - key encipherment

@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sageinsure-api.fullname" . }}-config
+  labels:
+    {{- include "sageinsure-api.labels" . | nindent 4 }}
+data:
+  # Application configuration
+  APP_NAME: "sageinsure-api"
+  APP_VERSION: "{{ .Chart.AppVersion }}"
+  
+  # Azure service endpoints
+  {{- range .Values.env }}
+  {{ .name }}: "{{ .value }}"
+  {{- end }}
+  
+  # Monitoring configuration
+  {{- if .Values.monitoring.enabled }}
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "{{ .Values.monitoring.port }}"
+  METRICS_PATH: "{{ .Values.monitoring.path }}"
+  {{- end }}
+  
+  # Health check configuration
+  {{- if .Values.healthCheck.enabled }}
+  HEALTH_CHECK_ENABLED: "true"
+  HEALTH_CHECK_PATH: "{{ .Values.healthCheck.path }}"
+  {{- end }}
+  
+  {{- if .Values.readinessProbe.enabled }}
+  READINESS_CHECK_ENABLED: "true"
+  READINESS_CHECK_PATH: "{{ .Values.readinessProbe.path }}"
+  {{- end }}

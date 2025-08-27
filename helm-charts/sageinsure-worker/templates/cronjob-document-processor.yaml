@@ -1,0 +1,91 @@
+{{- if .Values.batchJobs.documentProcessor.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "sageinsure-worker.fullname" . }}-document-processor
+  labels:
+    {{- include "sageinsure-worker.labels" . | nindent 4 }}
+    component: document-processor
+spec:
+  schedule: "{{ .Values.batchJobs.documentProcessor.schedule }}"
+  concurrencyPolicy: {{ .Values.batchJobs.documentProcessor.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.batchJobs.documentProcessor.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.batchJobs.documentProcessor.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          annotations:
+            checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+            {{- with .Values.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          labels:
+          
+      {{- include "sageinsure-worker.selectorLabels" . | nindent 12 }}
+            component: document-processor
+        spec:
+          restartPolicy: OnFailure
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ include "sageinsure-worker.serviceAccountName" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: document-processor
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "-m", "worker.jobs.document_processor"]
+              env:
+                - name: JOB_TYPE
+                  value: "document-processor"
+                - name: ENVIRONMENT
+                  value: "{{ .Values.app.environment }}"
+                - name: LOG_LEVEL
+                  value: "{{ .Values.app.logLevel }}"
+                {{- range .Values.env }}
+                - name: {{ .name }}
+                  value: "{{ .value }}"
+                {{- end }}
+                {{- if .Values.keyVault.enabled }}
+                {{- range .Values.keyVault.secrets }}
+                - name: {{ .envVar }}
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "sageinsure-worker.fullname" $ }}-secrets
+                      key: {{ .name }}
+                {{- end }}
+                {{- end }}
+              envFrom:
+                - configMapRef:
+                    name: {{ include "sageinsure-worker.fullname" . }}-config
+              resources:
+                {{- toYaml .Values.batchJobs.documentProcessor.resources | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                {{- if .Values.keyVault.enabled }}
+                - name: secrets-store
+                  mountPath: "/mnt/secrets-store"
+                  readOnly: true
+                {{- end }}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            {{- if .Values.keyVault.enabled }}
+            - name: secrets-store
+              csi:
+                driver: secrets-store.csi.k8s.io
+                readOnly: true
+                volumeAttributes:
+                  secretProviderClass: {{ include "sageinsure-worker.fullname" . }}-secrets
+            {{- end }}
+          {{- with .Values.batchJobs.documentProcessor.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

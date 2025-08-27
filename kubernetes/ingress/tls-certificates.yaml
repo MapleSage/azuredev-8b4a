@@ -1,0 +1,77 @@
+# Main TLS certificate for all SageInsure domains
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sageinsure-tls-cert
+  namespace: default
+spec:
+  secretName: sageinsure-tls-cert
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - sageinsure.local
+    - api.sageinsure.local
+    - grafana.sageinsure.local
+  usages:
+    - digital signature
+    - key encipherment
+
+---
+# Separate certificate for API with extended validation
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sageinsure-api-tls-cert
+  namespace: default
+spec:
+  secretName: sageinsure-api-tls-cert
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - api.sageinsure.local
+  usages:
+    - digital signature
+    - key encipherment
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days before expiry
+
+---
+# Certificate for monitoring dashboard
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sageinsure-monitoring-tls-cert
+  namespace: monitoring
+spec:
+  secretName: sageinsure-monitoring-tls-cert
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - grafana.sageinsure.local
+    - prometheus.sageinsure.local
+  usages:
+    - digital signature
+    - key encipherment
+
+---
+# TLS policy for enhanced security
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: sageinsure-tls-policy
+  namespace: default
+spec:
+  host: "*.sageinsure.local"
+  trafficPolicy:
+    tls:
+      mode: SIMPLE
+      minProtocolVersion: TLSV1_2
+      maxProtocolVersion: TLSV1_3
+      cipherSuites:
+        - ECDHE-RSA-AES256-GCM-SHA384
+        - ECDHE-RSA-AES128-GCM-SHA256
+        - ECDHE-RSA-CHACHA20-POLY1305
+      sni: "*.sageinsure.local"

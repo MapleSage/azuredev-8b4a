@@ -1,0 +1,66 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sageinsure-main-ingress
+  namespace: default
+  annotations:
+    # TLS Configuration
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # Rate Limiting
+    nginx.ingress.kubernetes.io/rate-limit-connections: "10"
+    nginx.ingress.kubernetes.io/rate-limit-requests-per-minute: "300"
+
+    # Performance
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+
+    # SSL
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - sageinsure.local
+        - api.sageinsure.local
+        - grafana.sageinsure.local
+      secretName: sageinsure-tls-cert
+  rules:
+    # Frontend - Main application
+    - host: sageinsure.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sageinsure-frontend
+                port:
+                  number: 80
+
+    # API Backend
+    - host: api.sageinsure.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sageinsure-api
+                port:
+                  number: 80
+
+    # Grafana Monitoring Dashboard
+    - host: grafana.sageinsure.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prometheus-stack-grafana
+                port:
+                  number: 80

@@ -1,0 +1,173 @@
+# ServiceMonitor for NGINX Ingress Controller metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nginx-ingress-controller
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/component: controller
+  namespaceSelector:
+    matchNames:
+      - ingress-nginx
+  endpoints:
+    - port: prometheus
+      interval: 30s
+      path: /metrics
+
+---
+# PrometheusRule for Ingress alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sageinsure-ingress-alerts
+  namespace: monitoring
+  labels:
+    app: sageinsure
+    component: ingress
+spec:
+  groups:
+    - name: sageinsure.ingress
+      rules:
+        - alert: HighIngressLatency
+          expr: histogram_quantile(0.95, sum(rate(nginx_ingress_controller_request_duration_seconds_bucket{ingress=~"sageinsure.*"}[5m])) by (le, ingress)) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High ingress latency detected"
+            description: "95th percentile latency for {{ $labels.ingress }} is {{ $value }}s"
+
+        - alert: HighIngressErrorRate
+          expr: sum(rate(nginx_ingress_controller_requests{ingress=~"sageinsure.*",status=~"5.."}[5m])) by (ingress) / sum(rate(nginx_ingress_controller_requests{ingress=~"sageinsure.*"}[5m])) by (ingress) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "High ingress error rate detected"
+            description: "Error rate for {{ $labels.ingress }} is {{ $value | humanizePercentage }}"
+
+        - alert: IngressCertificateExpiring
+          expr: (cert_manager_certificate_expiration_timestamp_seconds - time()) / 86400 < 30
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "TLS certificate expiring soon"
+            description: "Certificate {{ $labels.name }} in namespace {{ $labels.namespace }} expires in {{ $value }} days"
+
+        - alert: IngressRateLimitHit
+          expr: increase(nginx_ingress_controller_rate_limit_exceeded_total{ingress=~"sageinsure.*"}[5m]) > 10
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Rate limit exceeded"
+            description: "Rate limit exceeded {{ $value }} times for {{ $labels.ingress }} in the last 5 minutes"
+
+---
+# Grafana Dashboard ConfigMap for Ingress metrics
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sageinsure-ingress-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  sageinsure-ingress.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "SageInsure Ingress Metrics",
+        "tags": ["sageinsure", "ingress", "nginx"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(nginx_ingress_controller_requests{ingress=~\"sageinsure.*\"}[5m])) by (ingress)",
+                "legendFormat": "{{ ingress }}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec"
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "title": "Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(nginx_ingress_controller_request_duration_seconds_bucket{ingress=~\"sageinsure.*\"}[5m])) by (le, ingress))",
+                "legendFormat": "95th percentile - {{ ingress }}"
+              },
+              {
+                "expr": "histogram_quantile(0.50, sum(rate(nginx_ingress_controller_request_duration_seconds_bucket{ingress=~\"sageinsure.*\"}[5m])) by (le, ingress))",
+                "legendFormat": "50th percentile - {{ ingress }}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Seconds"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "title": "Error Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(nginx_ingress_controller_requests{ingress=~\"sageinsure.*\",status=~\"4..|5..\"}[5m])) by (ingress, status)",
+                "legendFormat": "{{ status }} - {{ ingress }}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Errors/sec"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "title": "Certificate Expiry",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "(cert_manager_certificate_expiration_timestamp_seconds{name=~\"sageinsure.*\"} - time()) / 86400",
+                "legendFormat": "{{ name }}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "days",
+                "thresholds": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 30},
+                    {"color": "green", "value": 60}
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }

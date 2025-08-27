@@ -1,0 +1,33 @@
+{{- if .Values.batchJobs.policyAnalyzer.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "sageinsure-worker.fullname" . }}-policy-analyzer
+  labels:
+    {{- include "sageinsure-worker.labels" . | nindent 4 }}
+    component: policy-analyzer
+spec:
+  schedule: "{{ .Values.batchJobs.policyAnalyzer.schedule }}"
+  concurrencyPolicy: {{ .Values.batchJobs.policyAnalyzer.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.batchJobs.policyAnalyzer.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.batchJobs.policyAnalyzer.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "sageinsure-worker.selectorLabels" . | nindent 12 }}
+            component: policy-analyzer
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "sageinsure-worker.serviceAccountName" . }}
+          containers:
+            - name: policy-analyzer
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              command: ["python", "-m", "worker.jobs.policy_analyzer"]
+              env:
+                - name: JOB_TYPE
+                  value: "policy-analyzer"
+              resources:
+                {{- toYaml .Values.batchJobs.policyAnalyzer.resources | nindent 16 }}
+{{- end }}

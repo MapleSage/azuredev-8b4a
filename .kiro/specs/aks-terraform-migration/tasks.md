@@ -49,29 +49,29 @@
   - Install cert-manager with ACME or Key Vault certificate issuer
   - _Requirements: 3.1, 3.2_
 
-- [ ] 8. Create monitoring and observability infrastructure
+- [x] 8. Create monitoring and observability infrastructure
 
   - Deploy Prometheus Operator and Grafana using Helm
   - Configure Azure Monitor integration for cluster insights
   - Set up log aggregation with FluentBit or similar
   - _Requirements: 5.1, 5.2_
 
-- [ ] 9. Implement application Helm charts
-- [ ] 9.1 Create FastAPI backend Helm chart
+- [x] 9. Implement application Helm charts
+- [x] 9.1 Create FastAPI backend Helm chart
 
   - Build Kubernetes Deployment with health checks and resource limits
   - Configure Service Account with Workload Identity annotations
   - Set up ConfigMap and Secret mounting from Key Vault
   - _Requirements: 7.1, 2.4, 4.2_
 
-- [ ] 9.2 Create worker services Helm chart
+- [x] 9.2 Create worker services Helm chart
 
   - Implement Job and CronJob templates for batch processing
   - Configure queue-based processing with appropriate node targeting
   - Set up resource requests and limits for different workload types
   - _Requirements: 7.2, 4.1_
 
-- [ ] 9.3 Create Next.js frontend Helm chart
+- [x] 9.3 Create Next.js frontend Helm chart
 
   - Build Deployment for static file serving with CDN integration
   - Configure runtime environment variables through ConfigMap
@@ -79,7 +79,7 @@
   - Update frontend to work with new AKS backend endpoints
   - _Requirements: 7.1, 3.1_
 
-- [ ] 10. Implement Kubernetes ingress and networking
+- [x] 10. Implement Kubernetes ingress and networking
 
   - Create Ingress resources with path-based routing
   - Configure TLS certificates with cert-manager automation

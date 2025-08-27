@@ -1,0 +1,125 @@
+# Pod Security Policy for application pods
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: sageinsure-psp
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - "configMap"
+    - "emptyDir"
+    - "projected"
+    - "secret"
+    - "downwardAPI"
+    - "persistentVolumeClaim"
+    - "csi"
+  runAsUser:
+    rule: "MustRunAsNonRoot"
+  seLinux:
+    rule: "RunAsAny"
+  fsGroup:
+    rule: "RunAsAny"
+  readOnlyRootFilesystem: true
+
+---
+# ClusterRole for Pod Security Policy
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sageinsure-psp-user
+rules:
+  - apiGroups: ["policy"]
+    resources: ["podsecuritypolicies"]
+    verbs: ["use"]
+    resourceNames:
+      - sageinsure-psp
+
+---
+# ClusterRoleBinding for Pod Security Policy
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sageinsure-psp-binding
+roleRef:
+  kind: ClusterRole
+  name: sageinsure-psp-user
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: sageinsure-api
+    namespace: default
+  - kind: ServiceAccount
+    name: sageinsure-frontend
+    namespace: default
+  - kind: ServiceAccount
+    name: sageinsure-worker
+    namespace: default
+
+---
+# Security Context Constraints (if using OpenShift)
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: sageinsure-scc
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegedContainer: false
+allowedCapabilities: null
+defaultAddCapabilities: null
+fsGroup:
+  type: RunAsAny
+readOnlyRootFilesystem: true
+requiredDropCapabilities:
+  - ALL
+runAsUser:
+  type: MustRunAsNonRoot
+seLinuxContext:
+  type: RunAsAny
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+  - csi
+
+---
+# Network Security Policy using Cilium (if available)
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: sageinsure-l7-policy
+  namespace: default
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-api
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app.kubernetes.io/name: sageinsure-frontend
+    - toPorts:
+        - ports:
+            - port: "8000"
+              protocol: TCP
+          rules:
+            http:
+              - method: "GET"
+                path: "/api/.*"
+              - method: "POST"
+                path: "/api/.*"
+              - method: "PUT"
+                path: "/api/.*"
+              - method: "DELETE"
+                path: "/api/.*"
+              - method: "GET"
+                path: "/health"
+              - method: "GET"
+                path: "/ready"
