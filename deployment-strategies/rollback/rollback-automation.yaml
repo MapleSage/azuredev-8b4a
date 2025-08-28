@@ -1,0 +1,395 @@
+# Automated Rollback Configuration for SageInsure
+# This implements automatic rollback triggers based on metrics and health checks
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rollback-config
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    component: rollback-automation
+data:
+  config.yaml: |
+    rollback:
+      # Automatic rollback triggers
+      triggers:
+        # Error rate based rollback
+        errorRate:
+          enabled: true
+          threshold: 5.0        # Rollback if error rate > 5%
+          duration: "2m"        # Sustained for 2 minutes
+          query: 'rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) * 100'
+        
+        # Response time based rollback
+        responseTime:
+          enabled: true
+          threshold: 3.0        # Rollback if p95 > 3 seconds
+          duration: "3m"        # Sustained for 3 minutes
+          query: 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))'
+        
+        # Health check based rollback
+        healthCheck:
+          enabled: true
+          failureThreshold: 3   # Rollback after 3 consecutive failures
+          interval: "30s"       # Check every 30 seconds
+          endpoint: "/health"
+        
+        # Pod restart based rollback
+        podRestarts:
+          enabled: true
+          threshold: 5          # Rollback if > 5 restarts in window
+          window: "10m"         # Within 10 minutes
+          query: 'increase(kube_pod_container_status_restarts_total[10m])'
+        
+        # Memory usage based rollback
+        memoryUsage:
+          enabled: true
+          threshold: 90         # Rollback if memory usage > 90%
+          duration: "5m"        # Sustained for 5 minutes
+          query: 'container_memory_usage_bytes / container_spec_memory_limit_bytes * 100'
+      
+      # Rollback execution configuration
+      execution:
+        method: "helm"          # helm, kubectl, or custom
+        timeout: "5m"           # Maximum time for rollback
+        verification:
+          enabled: true
+          timeout: "3m"         # Time to verify rollback success
+          healthCheck: true
+        
+        # Notification configuration
+        notifications:
+          slack:
+            enabled: true
+            webhook: "${SLACK_WEBHOOK_URL}"
+            channel: "#alerts"
+          email:
+            enabled: false
+            recipients: ["ops@sageinsure.com"]
+      
+      # Rollback history and limits
+      history:
+        maxRollbacks: 3         # Maximum rollbacks per hour
+        cooldownPeriod: "15m"   # Minimum time between rollbacks
+        retentionDays: 30       # Keep rollback history for 30 days
+
+---
+# ServiceAccount for Rollback Automation
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rollback-automation
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    component: rollback-automation
+
+---
+# ClusterRole for Rollback Operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rollback-automation
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    component: rollback-automation
+rules:
+  # Deployment management
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  # Service management
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  # Ingress management
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  # Pod monitoring
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # Events for logging
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create"]
+  # ConfigMaps for configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding for Rollback Automation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rollback-automation
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    component: rollback-automation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rollback-automation
+subjects:
+  - kind: ServiceAccount
+    name: rollback-automation
+    namespace: default
+
+---
+# Rollback Automation Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rollback-automation
+  namespace: default
+  labels:
+    app.kubernetes.io/name: rollback-automation
+    app.kubernetes.io/part-of: sageinsure
+    component: rollback-automation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rollback-automation
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rollback-automation
+        app.kubernetes.io/part-of: sageinsure
+        component: rollback-automation
+    spec:
+      serviceAccountName: rollback-automation
+      containers:
+        - name: rollback-controller
+          image: sageinsureacr.azurecr.io/rollback-automation:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PROMETHEUS_URL
+              value: "http://prometheus-operated.monitoring.svc.cluster.local:9090"
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rollback-secrets
+                  key: slack-webhook-url
+            - name: ROLLBACK_CONFIG_PATH
+              value: "/etc/config/config.yaml"
+            - name: LOG_LEVEL
+              value: "info"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: rollback-config
+
+---
+# Rollback Automation Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: rollback-automation
+  namespace: default
+  labels:
+    app.kubernetes.io/name: rollback-automation
+    app.kubernetes.io/part-of: sageinsure
+spec:
+  selector:
+    app.kubernetes.io/name: rollback-automation
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+
+---
+# PrometheusRule for Rollback Triggers
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sageinsure-rollback-triggers
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    component: rollback-automation
+spec:
+  groups:
+    - name: rollback.triggers
+      rules:
+        # High error rate trigger
+        - alert: RollbackTriggerHighErrorRate
+          expr: |
+            (
+              rate(http_requests_total{app_kubernetes_io_name="sageinsure-api",status=~"5.."}[5m]) /
+              rate(http_requests_total{app_kubernetes_io_name="sageinsure-api"}[5m])
+            ) * 100 > 5
+          for: 2m
+          labels:
+            severity: critical
+            trigger_type: rollback
+            trigger_reason: high_error_rate
+          annotations:
+            summary: "High error rate detected - rollback trigger"
+            description: "Error rate is {{ $value }}% for more than 2 minutes"
+            rollback_action: "automatic"
+
+        # High latency trigger
+        - alert: RollbackTriggerHighLatency
+          expr: |
+            histogram_quantile(0.95, 
+              rate(http_request_duration_seconds_bucket{app_kubernetes_io_name="sageinsure-api"}[5m])
+            ) > 3
+          for: 3m
+          labels:
+            severity: critical
+            trigger_type: rollback
+            trigger_reason: high_latency
+          annotations:
+            summary: "High latency detected - rollback trigger"
+            description: "95th percentile latency is {{ $value }}s for more than 3 minutes"
+            rollback_action: "automatic"
+
+        # Pod restart trigger
+        - alert: RollbackTriggerPodRestarts
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace="default",
+              pod=~"sageinsure-api-.*"
+            }[10m]) > 5
+          for: 1m
+          labels:
+            severity: warning
+            trigger_type: rollback
+            trigger_reason: pod_restarts
+          annotations:
+            summary: "Excessive pod restarts detected - rollback trigger"
+            description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in 10 minutes"
+            rollback_action: "automatic"
+
+        # Memory usage trigger
+        - alert: RollbackTriggerHighMemoryUsage
+          expr: |
+            (
+              container_memory_usage_bytes{
+                namespace="default",
+                pod=~"sageinsure-api-.*"
+              } / 
+              container_spec_memory_limit_bytes{
+                namespace="default",
+                pod=~"sageinsure-api-.*"
+              }
+            ) * 100 > 90
+          for: 5m
+          labels:
+            severity: warning
+            trigger_type: rollback
+            trigger_reason: high_memory_usage
+          annotations:
+            summary: "High memory usage detected - rollback trigger"
+            description: "Memory usage is {{ $value }}% for pod {{ $labels.pod }}"
+            rollback_action: "automatic"
+
+        # Health check failure trigger
+        - alert: RollbackTriggerHealthCheckFailure
+          expr: |
+            up{job="sageinsure-api"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            trigger_type: rollback
+            trigger_reason: health_check_failure
+          annotations:
+            summary: "Health check failures detected - rollback trigger"
+            description: "Health checks have been failing for more than 2 minutes"
+            rollback_action: "automatic"
+
+---
+# Secret for Rollback Automation (template)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rollback-secrets
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    component: rollback-automation
+type: Opaque
+stringData:
+  slack-webhook-url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  # Add other sensitive configuration here
+
+---
+# NetworkPolicy for Rollback Automation
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rollback-automation-netpol
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    component: rollback-automation
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rollback-automation
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Allow access to Kubernetes API
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    # Allow access to Prometheus
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+    # Allow DNS
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow HTTPS for webhooks
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443

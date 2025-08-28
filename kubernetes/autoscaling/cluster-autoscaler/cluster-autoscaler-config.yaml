@@ -1,0 +1,98 @@
+# Cluster Autoscaler configuration for AKS
+# Automatically scales node pools based on pod resource requirements
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-status
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: cluster-autoscaler
+    app.kubernetes.io/part-of: sageinsure
+data:
+  nodes.max: "100"
+  nodes.min: "3"
+  scale-down-enabled: "true"
+  scale-down-delay-after-add: "10m"
+  scale-down-unneeded-time: "10m"
+  scale-down-utilization-threshold: "0.5"
+  skip-nodes-with-local-storage: "false"
+  skip-nodes-with-system-pods: "false"
+
+---
+# ServiceMonitor for Cluster Autoscaler metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cluster-autoscaler-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: cluster-autoscaler
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - kube-system
+
+---
+# PodDisruptionBudget for Cluster Autoscaler
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cluster-autoscaler-pdb
+  namespace: kube-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+
+---
+# Custom metrics for autoscaling decisions
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-metrics-config
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+data:
+  custom-metrics.yaml: |
+    # Business-specific scaling metrics
+    business_metrics:
+      - name: insurance_quotes_per_minute
+        query: 'rate(insurance_quotes_generated_total[1m]) * 60'
+        threshold: 50
+        
+      - name: policy_processing_queue_length
+        query: 'policy_processing_queue_size'
+        threshold: 10
+        
+      - name: active_user_sessions
+        query: 'active_user_sessions_total'
+        threshold: 1000
+        
+      - name: document_analysis_backlog
+        query: 'document_analysis_queue_size'
+        threshold: 20
+        
+    # Infrastructure metrics
+    infrastructure_metrics:
+      - name: node_cpu_utilization
+        query: '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)'
+        threshold: 80
+        
+      - name: node_memory_utilization
+        query: '(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100'
+        threshold: 85
+        
+      - name: pod_pending_count
+        query: 'kube_pod_status_phase{phase="Pending"}'
+        threshold: 5

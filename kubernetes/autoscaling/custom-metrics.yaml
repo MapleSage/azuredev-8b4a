@@ -1,0 +1,178 @@
+# Custom metrics for autoscaling SageInsure applications
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: sageinsure-custom-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: sageinsure
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - default
+      - staging
+      - development
+
+---
+# Custom metrics adapter configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adapter-config
+  namespace: monitoring
+data:
+  config.yaml: |
+    rules:
+    # HTTP request rate metric
+    - seriesQuery: 'http_requests_total{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          pod: {resource: "pod"}
+      name:
+        matches: "^http_requests_total"
+        as: "http_requests_per_second"
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
+
+    # Queue length metric for worker scaling
+    - seriesQuery: 'redis_queue_length{namespace!="",service!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          service: {resource: "service"}
+      name:
+        matches: "^redis_queue_length"
+        as: "redis_queue_length"
+      metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+
+    # Response time metric
+    - seriesQuery: 'http_request_duration_seconds{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          pod: {resource: "pod"}
+      name:
+        matches: "^http_request_duration_seconds"
+        as: "http_request_duration_p95"
+      metricsQuery: 'histogram_quantile(0.95, sum(rate(<<.Series>>_bucket{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>, le))'
+
+    # Business metrics - insurance quotes per minute
+    - seriesQuery: 'insurance_quotes_generated_total{namespace!="",pod!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          pod: {resource: "pod"}
+      name:
+        matches: "^insurance_quotes_generated_total"
+        as: "insurance_quotes_per_minute"
+      metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[1m])) by (<<.GroupBy>>) * 60'
+
+    # Document processing queue
+    - seriesQuery: 'document_processing_queue_size{namespace!="",service!=""}'
+      resources:
+        overrides:
+          namespace: {resource: "namespace"}
+          service: {resource: "service"}
+      name:
+        matches: "^document_processing_queue_size"
+        as: "document_processing_queue_size"
+      metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
+
+---
+# KEDA ScaledObject for advanced autoscaling
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sageinsure-worker-scaler
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: sageinsure-worker
+  minReplicaCount: 1
+  maxReplicaCount: 20
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+    # Redis queue length trigger
+    - type: redis
+      metadata:
+        address: redis.default.svc.cluster.local:6379
+        listName: queue:document_processing
+        listLength: "10"
+        enableTLS: "false"
+    # Prometheus metric trigger for custom business metrics
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
+        metricName: insurance_quotes_processing_rate
+        threshold: "50"
+        query: sum(rate(insurance_quotes_generated_total[2m]))
+    # Azure Service Bus queue (if using Service Bus)
+    - type: azure-servicebus
+      metadata:
+        queueName: document-processing
+        messageCount: "30"
+      authenticationRef:
+        name: azure-servicebus-auth
+
+---
+# KEDA ScaledObject for API based on custom metrics
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: sageinsure-api-business-scaler
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: sageinsure-api
+  minReplicaCount: 2
+  maxReplicaCount: 25
+  pollingInterval: 15
+  cooldownPeriod: 180
+  triggers:
+    # HTTP request rate
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
+        metricName: http_requests_per_second
+        threshold: "100"
+        query: sum(rate(http_requests_total{job="sageinsure-api"}[2m]))
+    # Response time based scaling
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
+        metricName: http_response_time_p95
+        threshold: "2"
+        query: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="sageinsure-api"}[2m])) by (le))
+    # Business metric - active user sessions
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus-operated.monitoring.svc.cluster.local:9090
+        metricName: active_user_sessions
+        threshold: "500"
+        query: sum(active_user_sessions{job="sageinsure-api"})
+
+---
+# TriggerAuthentication for Azure Service Bus
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: azure-servicebus-auth
+  namespace: default
+spec:
+  podIdentity:
+    provider: azure-workload
+  # Or use secret-based authentication
+  # secretTargetRef:
+  # - parameter: connection
+  #   name: azure-servicebus-secret
+  #   key: connection-string

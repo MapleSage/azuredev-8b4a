@@ -1,0 +1,498 @@
+name: Integration Testing
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "worker/**"
+      - "helm-charts/**"
+      - "tests/integration/**"
+      - ".github/workflows/integration-testing.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "worker/**"
+      - "helm-charts/**"
+      - "tests/integration/**"
+  schedule:
+    # Run integration tests daily at 3 AM UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: "Type of integration tests to run"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - service
+          - contract
+          - api
+          - chaos
+      environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+      enable_chaos:
+        description: "Enable chaos engineering tests"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  GO_VERSION: "1.21"
+  KUBECTL_VERSION: "v1.28.0"
+
+jobs:
+  prepare-environment:
+    name: Prepare Test Environment
+    runs-on: ubuntu-latest
+    outputs:
+      namespace: ${{ steps.setup.outputs.namespace }}
+      api-url: ${{ steps.setup.outputs.api-url }}
+      frontend-url: ${{ steps.setup.outputs.frontend-url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup test environment variables
+        id: setup
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+            echo "namespace=default" >> $GITHUB_OUTPUT
+            echo "api-url=https://api.sageinsure.local" >> $GITHUB_OUTPUT
+            echo "frontend-url=https://sageinsure.local" >> $GITHUB_OUTPUT
+          else
+            echo "namespace=staging" >> $GITHUB_OUTPUT
+            echo "api-url=https://api-staging.sageinsure.local" >> $GITHUB_OUTPUT
+            echo "frontend-url=https://staging.sageinsure.local" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group sageinsure-rg \
+            --name sageinsure-aks \
+            --overwrite-existing
+
+      - name: Verify cluster connectivity
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+          kubectl get pods -n ${{ steps.setup.outputs.namespace }}
+
+      - name: Check application health
+        run: |
+          namespace="${{ steps.setup.outputs.namespace }}"
+
+          # Wait for pods to be ready
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=sageinsure-api -n "$namespace" --timeout=300s || true
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=sageinsure-frontend -n "$namespace" --timeout=300s || true
+
+          # Check pod status
+          kubectl get pods -n "$namespace"
+
+          # Test basic connectivity
+          kubectl run integration-test-probe --image=curlimages/curl --rm -i --restart=Never -n "$namespace" -- \
+            curl -f -m 10 http://sageinsure-api.$namespace.svc.cluster.local/health || echo "API health check failed"
+
+  service-to-service-tests:
+    name: Service-to-Service Communication Tests
+    runs-on: ubuntu-latest
+    needs: prepare-environment
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'service' || github.event_name != 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group sageinsure-rg \
+            --name sageinsure-aks \
+            --overwrite-existing
+
+      - name: Initialize Go modules
+        run: |
+          cd tests/integration/service-to-service
+          go mod init sageinsure-integration-service-to-service || true
+          go mod tidy
+
+      - name: Run service-to-service tests
+        run: |
+          cd tests/integration/service-to-service
+          go test -v -timeout 20m ./communication_test.go
+        env:
+          KUBECONFIG: ~/.kube/config
+          TEST_NAMESPACE: ${{ needs.prepare-environment.outputs.namespace }}
+          API_BASE_URL: http://sageinsure-api.${{ needs.prepare-environment.outputs.namespace }}.svc.cluster.local
+          FRONTEND_URL: http://sageinsure-frontend.${{ needs.prepare-environment.outputs.namespace }}.svc.cluster.local
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: service-to-service-test-results
+          path: tests/integration/service-to-service/*.log
+          retention-days: 30
+
+  contract-tests:
+    name: API Contract Tests
+    runs-on: ubuntu-latest
+    needs: prepare-environment
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'contract' || github.event_name != 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group sageinsure-rg \
+            --name sageinsure-aks \
+            --overwrite-existing
+
+      - name: Initialize Go modules
+        run: |
+          cd tests/integration/contract
+          go mod init sageinsure-integration-contract || true
+          go mod tidy
+
+      - name: Run contract tests
+        run: |
+          cd tests/integration/contract
+          go test -v -timeout 15m ./api_contract_test.go
+        env:
+          API_BASE_URL: http://sageinsure-api.${{ needs.prepare-environment.outputs.namespace }}.svc.cluster.local
+
+      - name: Upload contract test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contract-test-results
+          path: tests/integration/contract/*.log
+          retention-days: 30
+
+  api-integration-tests:
+    name: API Integration Tests
+    runs-on: ubuntu-latest
+    needs: prepare-environment
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'api' || github.event_name != 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group sageinsure-rg \
+            --name sageinsure-aks \
+            --overwrite-existing
+
+      - name: Initialize Go modules
+        run: |
+          cd tests/integration/api
+          go mod init sageinsure-integration-api || true
+          go mod tidy
+
+      - name: Run API integration tests
+        run: |
+          cd tests/integration/api
+          go test -v -timeout 25m ./api_integration_test.go
+        env:
+          API_BASE_URL: http://sageinsure-api.${{ needs.prepare-environment.outputs.namespace }}.svc.cluster.local
+
+      - name: Upload API test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-integration-test-results
+          path: tests/integration/api/*.log
+          retention-days: 30
+
+  chaos-engineering-tests:
+    name: Chaos Engineering Tests
+    runs-on: ubuntu-latest
+    needs: prepare-environment
+    if: (github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'chaos') && (github.event.inputs.enable_chaos == 'true' || github.event_name == 'schedule')
+    environment: chaos-testing
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group sageinsure-rg \
+            --name sageinsure-aks \
+            --overwrite-existing
+
+      - name: Initialize Go modules
+        run: |
+          cd tests/integration/chaos
+          go mod init sageinsure-integration-chaos || true
+          go mod tidy
+
+      - name: Pre-chaos health check
+        run: |
+          namespace="${{ needs.prepare-environment.outputs.namespace }}"
+          kubectl get pods -n "$namespace"
+          kubectl run pre-chaos-check --image=curlimages/curl --rm -i --restart=Never -n "$namespace" -- \
+            curl -f -m 10 http://sageinsure-api.$namespace.svc.cluster.local/health
+
+      - name: Run chaos engineering tests
+        run: |
+          cd tests/integration/chaos
+          go test -v -timeout 30m ./chaos_engineering_test.go
+        env:
+          KUBECONFIG: ~/.kube/config
+          TEST_NAMESPACE: ${{ needs.prepare-environment.outputs.namespace }}
+          API_BASE_URL: ${{ needs.prepare-environment.outputs.api-url }}
+
+      - name: Post-chaos health check
+        if: always()
+        run: |
+          namespace="${{ needs.prepare-environment.outputs.namespace }}"
+          echo "Checking system health after chaos tests..."
+          kubectl get pods -n "$namespace"
+
+          # Wait for system to stabilize
+          sleep 30
+
+          # Final health check
+          kubectl run post-chaos-check --image=curlimages/curl --rm -i --restart=Never -n "$namespace" -- \
+            curl -f -m 10 http://sageinsure-api.$namespace.svc.cluster.local/health || echo "System may need recovery"
+
+      - name: Upload chaos test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chaos-engineering-test-results
+          path: tests/integration/chaos/*.log
+          retention-days: 30
+
+  generate-integration-report:
+    name: Generate Integration Test Report
+    runs-on: ubuntu-latest
+    needs:
+      [
+        prepare-environment,
+        service-to-service-tests,
+        contract-tests,
+        api-integration-tests,
+        chaos-engineering-tests,
+      ]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: integration-test-results
+
+      - name: Generate comprehensive integration report
+        run: |
+          echo "# Integration Test Report" > integration-report.md
+          echo "" >> integration-report.md
+          echo "**Date:** $(date)" >> integration-report.md
+          echo "**Commit:** ${{ github.sha }}" >> integration-report.md
+          echo "**Branch:** ${{ github.ref_name }}" >> integration-report.md
+          echo "**Environment:** ${{ needs.prepare-environment.outputs.namespace }}" >> integration-report.md
+          echo "**Trigger:** ${{ github.event_name }}" >> integration-report.md
+          echo "" >> integration-report.md
+
+          echo "## Test Configuration" >> integration-report.md
+          echo "- **Namespace:** ${{ needs.prepare-environment.outputs.namespace }}" >> integration-report.md
+          echo "- **API URL:** ${{ needs.prepare-environment.outputs.api-url }}" >> integration-report.md
+          echo "- **Frontend URL:** ${{ needs.prepare-environment.outputs.frontend-url }}" >> integration-report.md
+          echo "- **Test Type:** ${{ github.event.inputs.test_type || 'all' }}" >> integration-report.md
+          echo "- **Chaos Tests:** ${{ github.event.inputs.enable_chaos || 'false' }}" >> integration-report.md
+          echo "" >> integration-report.md
+
+          echo "## Test Results Summary" >> integration-report.md
+          echo "" >> integration-report.md
+
+          # Service-to-service results
+          if [ "${{ needs.service-to-service-tests.result }}" = "success" ]; then
+            echo "✅ **Service-to-Service Communication Tests:** PASSED" >> integration-report.md
+          elif [ "${{ needs.service-to-service-tests.result }}" = "skipped" ]; then
+            echo "⏭️ **Service-to-Service Communication Tests:** SKIPPED" >> integration-report.md
+          else
+            echo "❌ **Service-to-Service Communication Tests:** FAILED" >> integration-report.md
+          fi
+
+          # Contract test results
+          if [ "${{ needs.contract-tests.result }}" = "success" ]; then
+            echo "✅ **API Contract Tests:** PASSED" >> integration-report.md
+          elif [ "${{ needs.contract-tests.result }}" = "skipped" ]; then
+            echo "⏭️ **API Contract Tests:** SKIPPED" >> integration-report.md
+          else
+            echo "❌ **API Contract Tests:** FAILED" >> integration-report.md
+          fi
+
+          # API integration results
+          if [ "${{ needs.api-integration-tests.result }}" = "success" ]; then
+            echo "✅ **API Integration Tests:** PASSED" >> integration-report.md
+          elif [ "${{ needs.api-integration-tests.result }}" = "skipped" ]; then
+            echo "⏭️ **API Integration Tests:** SKIPPED" >> integration-report.md
+          else
+            echo "❌ **API Integration Tests:** FAILED" >> integration-report.md
+          fi
+
+          # Chaos engineering results
+          if [ "${{ needs.chaos-engineering-tests.result }}" = "success" ]; then
+            echo "✅ **Chaos Engineering Tests:** PASSED" >> integration-report.md
+          elif [ "${{ needs.chaos-engineering-tests.result }}" = "skipped" ]; then
+            echo "⏭️ **Chaos Engineering Tests:** SKIPPED" >> integration-report.md
+          else
+            echo "❌ **Chaos Engineering Tests:** FAILED" >> integration-report.md
+          fi
+
+          echo "" >> integration-report.md
+          echo "## Detailed Results" >> integration-report.md
+          echo "" >> integration-report.md
+
+          # Add artifact information
+          if [ -d "integration-test-results" ]; then
+            echo "### Available Test Artifacts" >> integration-report.md
+            find integration-test-results -type f -name "*.log" -o -name "*.json" | while read file; do
+              echo "- $(basename "$file")" >> integration-report.md
+            done
+          fi
+
+          echo "" >> integration-report.md
+          echo "## System Health" >> integration-report.md
+          echo "- **Environment:** ${{ needs.prepare-environment.outputs.namespace }}" >> integration-report.md
+          echo "- **API Endpoint:** ${{ needs.prepare-environment.outputs.api-url }}" >> integration-report.md
+          echo "- **Test Duration:** Approximately $(( $(date +%s) - ${{ github.event.head_commit.timestamp && '$(date -d "${{ github.event.head_commit.timestamp }}" +%s)' || '$(date +%s)' }} )) seconds" >> integration-report.md
+
+          echo "" >> integration-report.md
+          echo "---" >> integration-report.md
+          echo "Generated by SageInsure Integration Testing Pipeline" >> integration-report.md
+
+      - name: Upload integration test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-report
+          path: integration-report.md
+          retention-days: 90
+
+      - name: Comment PR with integration results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('integration-report.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🔗 Integration Test Results\n\n${report}`
+            });
+
+      - name: Create issue on integration test failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('integration-report.md', 'utf8');
+
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Scheduled Integration Tests Failed - ${new Date().toISOString().split('T')[0]}`,
+              body: `Scheduled integration tests have failed.\n\n${report}`,
+              labels: ['testing', 'integration', 'failure', 'scheduled']
+            });

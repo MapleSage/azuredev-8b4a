@@ -16,6 +16,11 @@ on:
           - staging
           - development
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 env:
   AKS_CLUSTER_NAME: sageinsure-aks
   AKS_RESOURCE_GROUP: sageinsure-rg
@@ -54,31 +59,71 @@ jobs:
           az aks get-credentials \
             --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
             --name ${{ env.AKS_CLUSTER_NAME }} \
-            --overwrite-existing
+            --overwrite-existing \
+            --admin
+
+          # Verify connection
+          kubectl cluster-info
+          kubectl get nodes
       - name: Check pod health
         if: steps.check.outputs.monitor == 'true'
         run: |
           namespace="${{ matrix.environment == 'production' && 'default' || matrix.environment }}"
 
           echo "Checking pod health in $namespace namespace..."
+
+          # Check if namespace exists
+          if ! kubectl get namespace "$namespace" &> /dev/null; then
+            echo "Namespace $namespace does not exist. Creating it..."
+            kubectl create namespace "$namespace"
+            kubectl label namespace "$namespace" environment="${{ matrix.environment }}"
+            echo "Namespace created. No pods to check yet."
+            exit 0
+          fi
+
+          # Get all pods in namespace
           kubectl get pods -n "$namespace"
+
+          # Check if there are any pods
+          total_pods=$(kubectl get pods -n "$namespace" --no-headers 2>/dev/null | wc -l)
+          if [ "$total_pods" -eq 0 ]; then
+            echo "No pods found in $namespace namespace. This might be expected if applications haven't been deployed yet."
+            exit 0
+          fi
 
           # Check for unhealthy pods
           unhealthy_pods=$(kubectl get pods -n "$namespace" --field-selector=status.phase!=Running --no-headers | wc -l)
           if [ "$unhealthy_pods" -gt 0 ]; then
             echo "Found $unhealthy_pods unhealthy pods"
             kubectl get pods -n "$namespace" --field-selector=status.phase!=Running
+            kubectl describe pods -n "$namespace" --field-selector=status.phase!=Running
             exit 1
           fi
+
+          echo "All $total_pods pods are healthy in $namespace namespace"
 
       - name: Check service endpoints
         if: steps.check.outputs.monitor == 'true'
         run: |
           namespace="${{ matrix.environment == 'production' && 'default' || matrix.environment }}"
 
-          # Test API health endpoint
-          kubectl run health-check-${{ matrix.environment }} --image=curlimages/curl --rm -i --restart=Never -n "$namespace" -- \
-            curl -f -m 30 http://sageinsure-api.$namespace.svc.cluster.local/health || echo "API health check failed"
+          # Check if sageinsure-api service exists
+          if kubectl get service sageinsure-api -n "$namespace" &> /dev/null; then
+            echo "Testing API health endpoint..."
+            # Test API health endpoint
+            if kubectl run health-check-${{ matrix.environment }} --image=curlimages/curl --rm -i --restart=Never -n "$namespace" -- \
+              curl -f -m 30 http://sageinsure-api.$namespace.svc.cluster.local/health; then
+              echo "API health check passed"
+            else
+              echo "API health check failed"
+              exit 1
+            fi
+          else
+            echo "sageinsure-api service not found in $namespace namespace"
+            echo "Available services:"
+            kubectl get services -n "$namespace" || echo "No services found"
+            echo "This might be expected if applications haven't been deployed yet."
+          fi
 
       - name: Generate health report
         if: steps.check.outputs.monitor == 'true' && failure()

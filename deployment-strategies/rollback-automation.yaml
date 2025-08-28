@@ -1,0 +1,317 @@
+# Automated Rollback Configuration for SageInsure
+# This configuration provides automated rollback capabilities based on metrics and health checks
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rollback-config
+  namespace: default
+  labels:
+    app.kubernetes.io/name: sageinsure-api
+    app.kubernetes.io/component: rollback
+data:
+  rollback-thresholds.yaml: |
+    # Rollback thresholds configuration
+    thresholds:
+      # Error rate threshold (percentage)
+      error_rate: 5.0
+      # Response time threshold (milliseconds)
+      response_time_p95: 2000
+      # Success rate threshold (percentage)
+      success_rate: 95.0
+      # Memory usage threshold (percentage)
+      memory_usage: 90.0
+      # CPU usage threshold (percentage)
+      cpu_usage: 85.0
+      # Pod restart threshold (count in 5 minutes)
+      pod_restarts: 3
+
+    # Monitoring windows
+    monitoring:
+      # How long to monitor before making rollback decision
+      evaluation_window: "5m"
+      # How often to check metrics
+      check_interval: "30s"
+      # Number of consecutive failures before rollback
+      failure_threshold: 3
+
+    # Rollback settings
+    rollback:
+      # Enable automatic rollback
+      enabled: true
+      # Rollback timeout
+      timeout: "300s"
+      # Post-rollback verification time
+      verification_time: "120s"
+
+---
+# ServiceMonitor for Rollback Metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sageinsure-rollback-monitor
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: sageinsure-api
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-api
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - default
+
+---
+# PrometheusRule for Rollback Alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sageinsure-rollback-rules
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: sageinsure-api
+    prometheus: kube-prometheus
+spec:
+  groups:
+    - name: sageinsure.rollback.rules
+      interval: 30s
+      rules:
+        # High error rate alert
+        - alert: SageInsureHighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{job="sageinsure-api",status=~"5.."}[5m])) /
+              sum(rate(http_requests_total{job="sageinsure-api"}[5m]))
+            ) * 100 > 5
+          for: 2m
+          labels:
+            severity: critical
+            component: api
+            action: rollback
+          annotations:
+            summary: "SageInsure API has high error rate"
+            description: "Error rate is {{ $value }}% which is above the 5% threshold"
+            runbook_url: "https://docs.sageinsure.com/runbooks/high-error-rate"
+
+        # High response time alert
+        - alert: SageInsureHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket{job="sageinsure-api"}[5m])) by (le)
+            ) * 1000 > 2000
+          for: 3m
+          labels:
+            severity: critical
+            component: api
+            action: rollback
+          annotations:
+            summary: "SageInsure API has high response time"
+            description: "95th percentile response time is {{ $value }}ms which is above 2000ms threshold"
+            runbook_url: "https://docs.sageinsure.com/runbooks/high-latency"
+
+        # Low success rate alert
+        - alert: SageInsureLowSuccessRate
+          expr: |
+            (
+              sum(rate(http_requests_total{job="sageinsure-api",status!~"5.."}[5m])) /
+              sum(rate(http_requests_total{job="sageinsure-api"}[5m]))
+            ) * 100 < 95
+          for: 2m
+          labels:
+            severity: critical
+            component: api
+            action: rollback
+          annotations:
+            summary: "SageInsure API has low success rate"
+            description: "Success rate is {{ $value }}% which is below the 95% threshold"
+            runbook_url: "https://docs.sageinsure.com/runbooks/low-success-rate"
+
+        # High memory usage alert
+        - alert: SageInsureHighMemoryUsage
+          expr: |
+            (
+              container_memory_working_set_bytes{pod=~"sageinsure-api-.*"} /
+              container_spec_memory_limit_bytes{pod=~"sageinsure-api-.*"}
+            ) * 100 > 90
+          for: 5m
+          labels:
+            severity: warning
+            component: api
+            action: rollback
+          annotations:
+            summary: "SageInsure API pod has high memory usage"
+            description: "Memory usage is {{ $value }}% which is above 90% threshold"
+            runbook_url: "https://docs.sageinsure.com/runbooks/high-memory"
+
+        # High CPU usage alert
+        - alert: SageInsureHighCPUUsage
+          expr: |
+            (
+              rate(container_cpu_usage_seconds_total{pod=~"sageinsure-api-.*"}[5m]) /
+              container_spec_cpu_quota{pod=~"sageinsure-api-.*"} * container_spec_cpu_period{pod=~"sageinsure-api-.*"}
+            ) * 100 > 85
+          for: 5m
+          labels:
+            severity: warning
+            component: api
+            action: rollback
+          annotations:
+            summary: "SageInsure API pod has high CPU usage"
+            description: "CPU usage is {{ $value }}% which is above 85% threshold"
+            runbook_url: "https://docs.sageinsure.com/runbooks/high-cpu"
+
+        # Pod restart alert
+        - alert: SageInsurePodRestarts
+          expr: |
+            increase(kube_pod_container_status_restarts_total{pod=~"sageinsure-api-.*"}[5m]) > 3
+          for: 1m
+          labels:
+            severity: critical
+            component: api
+            action: rollback
+          annotations:
+            summary: "SageInsure API pod is restarting frequently"
+            description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last 5 minutes"
+            runbook_url: "https://docs.sageinsure.com/runbooks/pod-restarts"
+
+        # Deployment failure alert
+        - alert: SageInsureDeploymentFailed
+          expr: |
+            kube_deployment_status_condition{deployment=~"sageinsure-api-.*",condition="Progressing",status="false"} == 1
+          for: 5m
+          labels:
+            severity: critical
+            component: api
+            action: rollback
+          annotations:
+            summary: "SageInsure API deployment has failed"
+            description: "Deployment {{ $labels.deployment }} is not progressing"
+            runbook_url: "https://docs.sageinsure.com/runbooks/deployment-failure"
+
+---
+# Rollback Job Template
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sageinsure-rollback-job
+  namespace: default
+  labels:
+    app.kubernetes.io/name: sageinsure-api
+    app.kubernetes.io/component: rollback
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sageinsure-api
+        app.kubernetes.io/component: rollback
+    spec:
+      serviceAccountName: sageinsure-rollback
+      restartPolicy: OnFailure
+      containers:
+        - name: rollback
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+
+              echo "Starting automated rollback process..."
+
+              # Determine deployment strategy
+              STRATEGY=${DEPLOYMENT_STRATEGY:-"rolling"}
+              NAMESPACE=${NAMESPACE:-"default"}
+
+              case $STRATEGY in
+                "rolling")
+                  echo "Performing rolling deployment rollback..."
+                  kubectl rollout undo deployment/sageinsure-api-rolling -n $NAMESPACE
+                  kubectl rollout status deployment/sageinsure-api-rolling -n $NAMESPACE --timeout=300s
+                  ;;
+                "blue-green")
+                  echo "Performing blue-green rollback..."
+                  kubectl argo rollouts abort sageinsure-api-blue-green -n $NAMESPACE || true
+                  kubectl argo rollouts undo sageinsure-api-blue-green -n $NAMESPACE
+                  ;;
+                "canary")
+                  echo "Performing canary rollback..."
+                  kubectl argo rollouts abort sageinsure-api-canary -n $NAMESPACE || true
+                  kubectl argo rollouts undo sageinsure-api-canary -n $NAMESPACE
+                  ;;
+              esac
+
+              echo "Rollback completed successfully"
+
+              # Send notification (webhook, Slack, etc.)
+              curl -X POST "${WEBHOOK_URL}" \
+                -H "Content-Type: application/json" \
+                -d "{\"text\":\"🔄 SageInsure API rollback completed for strategy: $STRATEGY\"}" || true
+          env:
+            - name: DEPLOYMENT_STRATEGY
+              value: "rolling"
+            - name: NAMESPACE
+              value: "default"
+            - name: WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: notification-secrets
+                  key: webhook-url
+                  optional: true
+
+---
+# ServiceAccount for Rollback Operations
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sageinsure-rollback
+  namespace: default
+  labels:
+    app.kubernetes.io/name: sageinsure-api
+    app.kubernetes.io/component: rollback
+
+---
+# ClusterRole for Rollback Operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sageinsure-rollback
+  labels:
+    app.kubernetes.io/name: sageinsure-api
+    app.kubernetes.io/component: rollback
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "patch", "update"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["rollouts"]
+    verbs: ["get", "list", "patch", "update"]
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create"]
+
+---
+# ClusterRoleBinding for Rollback Operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sageinsure-rollback
+  labels:
+    app.kubernetes.io/name: sageinsure-api
+    app.kubernetes.io/component: rollback
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sageinsure-rollback
+subjects:
+  - kind: ServiceAccount
+    name: sageinsure-rollback
+    namespace: default

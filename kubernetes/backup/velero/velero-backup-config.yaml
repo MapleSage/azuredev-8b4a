@@ -1,0 +1,146 @@
+# Velero Backup Configuration for SageInsure
+# Automated backup and disaster recovery solution
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: velero
+  labels:
+    name: velero
+    app.kubernetes.io/part-of: sageinsure
+
+---
+# Velero BackupStorageLocation
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: azure-backup-location
+  namespace: velero
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+spec:
+  provider: azure
+  objectStorage:
+    bucket: sageinsure-backups
+    prefix: velero
+  config:
+    resourceGroup: sageinsure-rg
+    storageAccount: sageinsurebackups
+    subscriptionId: "{{ .Values.azure.subscriptionId }}"
+
+---
+# Velero VolumeSnapshotLocation
+apiVersion: velero.io/v1
+kind: VolumeSnapshotLocation
+metadata:
+  name: azure-snapshot-location
+  namespace: velero
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+spec:
+  provider: azure
+  config:
+    resourceGroup: sageinsure-rg
+    subscriptionId: "{{ .Values.azure.subscriptionId }}"
+
+---
+# Daily backup schedule for SageInsure applications
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: sageinsure-daily-backup
+  namespace: velero
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+spec:
+  schedule: "0 1 * * *" # Daily at 1 AM
+  template:
+    metadata:
+      labels:
+        backup-type: daily
+        app.kubernetes.io/part-of: sageinsure
+    spec:
+      includedNamespaces:
+        - default
+        - monitoring
+        - ingress-nginx
+        - external-secrets
+        - reloader
+      includedResources:
+        - "*"
+      excludedResources:
+        - events
+        - events.events.k8s.io
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/part-of: sageinsure
+      snapshotVolumes: true
+      ttl: 168h # 7 days retention
+      storageLocation: azure-backup-location
+      volumeSnapshotLocations:
+        - azure-snapshot-location
+
+---
+# Weekly backup schedule with longer retention
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: sageinsure-weekly-backup
+  namespace: velero
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+spec:
+  schedule: "0 2 * * 0" # Weekly on Sunday at 2 AM
+  template:
+    metadata:
+      labels:
+        backup-type: weekly
+        app.kubernetes.io/part-of: sageinsure
+    spec:
+      includedNamespaces:
+        - default
+        - monitoring
+        - ingress-nginx
+        - external-secrets
+        - reloader
+        - kube-system
+      includedResources:
+        - "*"
+      excludedResources:
+        - events
+        - events.events.k8s.io
+      snapshotVolumes: true
+      ttl: 720h # 30 days retention
+      storageLocation: azure-backup-location
+      volumeSnapshotLocations:
+        - azure-snapshot-location
+
+---
+# Monthly backup schedule for long-term retention
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: sageinsure-monthly-backup
+  namespace: velero
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+spec:
+  schedule: "0 3 1 * *" # Monthly on 1st at 3 AM
+  template:
+    metadata:
+      labels:
+        backup-type: monthly
+        app.kubernetes.io/part-of: sageinsure
+    spec:
+      includedNamespaces:
+        - "*"
+      includedResources:
+        - "*"
+      excludedResources:
+        - events
+        - events.events.k8s.io
+      snapshotVolumes: true
+      ttl: 8760h # 365 days retention
+      storageLocation: azure-backup-location
+      volumeSnapshotLocations:
+        - azure-snapshot-location
