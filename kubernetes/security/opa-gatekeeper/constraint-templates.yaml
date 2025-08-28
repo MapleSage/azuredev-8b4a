@@ -1,0 +1,95 @@
+# OPA Gatekeeper Constraint Templates for SageInsure
+# Policy-as-code security controls
+
+# Require Security Context
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiresecuritycontext
+  annotations:
+    description: "Requires pods to have security context with specific settings"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireSecurityContext
+      validation:
+        type: object
+        properties:
+          runAsNonRoot:
+            type: boolean
+          readOnlyRootFilesystem:
+            type: boolean
+          allowPrivilegeEscalation:
+            type: boolean
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiresecuritycontext
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.runAsNonRoot
+          msg := "Container must run as non-root user"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem
+          msg := "Container must have read-only root filesystem"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.allowPrivilegeEscalation != false
+          msg := "Container must not allow privilege escalation"
+        }
+
+---
+# Require Resource Limits
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequireresourcelimits
+  annotations:
+    description: "Requires containers to have resource limits and requests"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireResourceLimits
+      validation:
+        type: object
+        properties:
+          cpu:
+            type: string
+          memory:
+            type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequireresourcelimits
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits.cpu
+          msg := "Container must have CPU limits"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits.memory
+          msg := "Container must have memory limits"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.requests.cpu
+          msg := "Container must have CPU requests"
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.resources.requests.memory
+          msg := "Container must have memory requests"
+        }

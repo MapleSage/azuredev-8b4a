@@ -1,0 +1,55 @@
+# OPA Gatekeeper System Installation
+# Install Gatekeeper for policy-as-code admission control
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gatekeeper-system
+  labels:
+    admission.gatekeeper.sh/ignore: "no-self-managing"
+    control-plane: controller-manager
+    gatekeeper.sh/system: "yes"
+
+---
+# Gatekeeper ValidatingAdmissionWebhook
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionWebhook
+metadata:
+  name: gatekeeper-validating-webhook-configuration
+webhooks:
+  - name: validation.gatekeeper.sh
+    clientConfig:
+      service:
+        name: gatekeeper-webhook-service
+        namespace: gatekeeper-system
+        path: "/v1/admit"
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["*"]
+        apiVersions: ["*"]
+        resources: ["*"]
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    failurePolicy: Ignore
+
+---
+# Gatekeeper MutatingAdmissionWebhook
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionWebhook
+metadata:
+  name: gatekeeper-mutating-webhook-configuration
+webhooks:
+  - name: mutation.gatekeeper.sh
+    clientConfig:
+      service:
+        name: gatekeeper-webhook-service
+        namespace: gatekeeper-system
+        path: "/v1/mutate"
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["*"]
+        apiVersions: ["*"]
+        resources: ["*"]
+    admissionReviewVersions: ["v1", "v1beta1"]
+    sideEffects: None
+    failurePolicy: Ignore

@@ -1,0 +1,86 @@
+# Security Configuration for SageInsure
+# Comprehensive security settings and policies
+
+# Limit Ranges for pod security
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: sageinsure-limit-range
+  namespace: default
+spec:
+  limits:
+    - default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      max:
+        cpu: "2"
+        memory: "4Gi"
+      min:
+        cpu: "50m"
+        memory: "64Mi"
+      type: Container
+    - max:
+        cpu: "4"
+        memory: "8Gi"
+      min:
+        cpu: "100m"
+        memory: "128Mi"
+      type: Pod
+
+---
+# Pod Disruption Budget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sageinsure-api-pdb
+  namespace: default
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-api
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sageinsure-frontend-pdb
+  namespace: default
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-frontend
+
+---
+# Security Context for SageInsure pods
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sageinsure-security-context
+  namespace: default
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+data:
+  security-context.yaml: |
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      fsGroup: 1000
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 1000
+      runAsGroup: 1000
+      capabilities:
+        drop:
+        - ALL
+      seccompProfile:
+        type: RuntimeDefault

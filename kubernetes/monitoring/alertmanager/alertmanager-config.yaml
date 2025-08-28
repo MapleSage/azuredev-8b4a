@@ -1,0 +1,104 @@
+# AlertManager Configuration for SageInsure
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-main
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alertmanager
+    app.kubernetes.io/part-of: sageinsure
+stringData:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alerts@sageinsure.local'
+      resolve_timeout: 5m
+
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default-receiver'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'critical-alerts'
+        group_wait: 0s
+        repeat_interval: 5m
+      - match:
+          component: api
+        receiver: 'api-alerts'
+      - match:
+          component: infrastructure
+        receiver: 'infrastructure-alerts'
+
+    receivers:
+    - name: 'default-receiver'
+      slack_configs:
+      - api_url: '{{ .SlackWebhookURL }}'
+        channel: '#alerts'
+        title: 'SageInsure Alert'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          *Component:* {{ .Labels.component }}
+          {{ end }}
+
+    - name: 'critical-alerts'
+      slack_configs:
+      - api_url: '{{ .SlackWebhookURL }}'
+        channel: '#critical-alerts'
+        title: '🚨 CRITICAL: SageInsure Alert'
+        text: |
+          {{ range .Alerts }}
+          *CRITICAL ALERT:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Component:* {{ .Labels.component }}
+          *Time:* {{ .StartsAt }}
+          {{ end }}
+      email_configs:
+      - to: 'oncall@sageinsure.local'
+        subject: 'CRITICAL: SageInsure Alert - {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Component: {{ .Labels.component }}
+          Started: {{ .StartsAt }}
+          {{ end }}
+
+    - name: 'api-alerts'
+      slack_configs:
+      - api_url: '{{ .SlackWebhookURL }}'
+        channel: '#api-alerts'
+        title: 'API Alert - SageInsure'
+        text: |
+          {{ range .Alerts }}
+          *API Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          {{ end }}
+
+    - name: 'infrastructure-alerts'
+      slack_configs:
+      - api_url: '{{ .SlackWebhookURL }}'
+        channel: '#infrastructure-alerts'
+        title: 'Infrastructure Alert - SageInsure'
+        text: |
+          {{ range .Alerts }}
+          *Infrastructure Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Pod:* {{ .Labels.pod }}
+          *Namespace:* {{ .Labels.namespace }}
+          {{ end }}
+
+    inhibit_rules:
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'cluster', 'service']

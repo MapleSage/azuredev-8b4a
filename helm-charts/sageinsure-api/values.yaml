@@ -100,19 +100,30 @@ app:
 # Health check configuration
 healthCheck:
   enabled: true
-  path: /health
+  path: /health/live
   initialDelaySeconds: 30
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
+  successThreshold: 1
 
 readinessProbe:
   enabled: true
-  path: /ready
+  path: /health/ready
   initialDelaySeconds: 15
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 3
+  successThreshold: 1
+
+startupProbe:
+  enabled: true
+  path: /health/startup
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 30
+  successThreshold: 1
 
 # Azure Key Vault integration
 keyVault:

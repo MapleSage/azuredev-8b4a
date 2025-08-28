@@ -1,0 +1,274 @@
+name: Helm Chart Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "helm-charts/**"
+  workflow_dispatch:
+    inputs:
+      chart_version:
+        description: "Chart version to release (leave empty for auto-increment)"
+        required: false
+        type: string
+
+env:
+  HELM_VERSION: "3.13.0"
+
+jobs:
+  lint-and-test:
+    name: Lint and Test Charts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+
+      - name: Lint Helm charts
+        run: |
+          ct lint --config .github/ct.yaml --chart-dirs helm-charts
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.8.0
+        with:
+          cluster_name: chart-testing
+          config: .github/kind-config.yaml
+
+      - name: Install cert-manager
+        run: |
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+          kubectl wait --for=condition=ready pod -l app=cert-manager --timeout=300s -n cert-manager
+
+      - name: Install NGINX Ingress Controller
+        run: |
+          helm install ingress-nginx ingress-nginx/ingress-nginx \
+            --namespace ingress-nginx \
+            --create-namespace \
+            --set controller.service.type=NodePort \
+            --wait
+
+      - name: Test Helm charts
+        run: |
+          ct install --config .github/ct.yaml --chart-dirs helm-charts
+
+  security-scan:
+    name: Security Scan Charts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Checkov security scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: helm-charts
+          framework: kubernetes
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+
+      - name: Upload Checkov scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+
+      - name: Run Kubesec security scan
+        run: |
+          # Install kubesec
+          curl -sSX GET "https://api.github.com/repos/controlplaneio/kubesec/releases/latest" \
+            | jq -r '.assets[] | select(.name | contains("linux_amd64")) | .browser_download_url' \
+            | xargs curl -sSL -o kubesec
+          chmod +x kubesec
+
+          # Scan rendered templates
+          for chart in helm-charts/*/; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              chart_name=$(basename "$chart")
+              echo "Scanning $chart_name..."
+              
+              # Render templates
+              helm template "$chart" > "/tmp/${chart_name}-rendered.yaml"
+              
+              # Scan with kubesec
+              ./kubesec scan "/tmp/${chart_name}-rendered.yaml" > "kubesec-${chart_name}.json"
+            fi
+          done
+
+      - name: Upload Kubesec results
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubesec-results
+          path: kubesec-*.json
+          retention-days: 30
+
+  package-and-release:
+    name: Package and Release Charts
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, security-scan]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Determine chart versions
+        id: versions
+        run: |
+          mkdir -p .helm-packages
+
+          for chart_dir in helm-charts/*/; do
+            if [ -f "$chart_dir/Chart.yaml" ]; then
+              chart_name=$(basename "$chart_dir")
+              current_version=$(yq eval '.version' "$chart_dir/Chart.yaml")
+              
+              if [ -n "${{ github.event.inputs.chart_version }}" ]; then
+                new_version="${{ github.event.inputs.chart_version }}"
+              else
+                # Auto-increment patch version
+                IFS='.' read -ra VERSION_PARTS <<< "$current_version"
+                major=${VERSION_PARTS[0]}
+                minor=${VERSION_PARTS[1]}
+                patch=${VERSION_PARTS[2]}
+                new_patch=$((patch + 1))
+                new_version="$major.$minor.$new_patch"
+              fi
+              
+              echo "Updating $chart_name from $current_version to $new_version"
+              yq eval ".version = \"$new_version\"" -i "$chart_dir/Chart.yaml"
+              
+              echo "${chart_name}_version=$new_version" >> $GITHUB_OUTPUT
+            fi
+          done
+
+      - name: Package Helm charts
+        run: |
+          for chart_dir in helm-charts/*/; do
+            if [ -f "$chart_dir/Chart.yaml" ]; then
+              helm package "$chart_dir" --destination .helm-packages
+            fi
+          done
+
+      - name: Generate Helm repository index
+        run: |
+          helm repo index .helm-packages --url https://github.com/${{ github.repository }}/releases/download/helm-charts/
+
+      - name: Commit version updates
+        run: |
+          git add helm-charts/*/Chart.yaml
+          git commit -m "chore: bump chart versions [skip ci]" || exit 0
+          git push
+
+      - name: Create release tag
+        id: tag
+        run: |
+          tag="helm-charts-$(date +%Y%m%d-%H%M%S)"
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+          git tag "$tag"
+          git push origin "$tag"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Helm Charts Release ${{ steps.tag.outputs.tag }}
+          body: |
+            ## Helm Charts Release
+
+            This release contains updated Helm charts for the SageInsure application.
+
+            ### Charts included:
+            - **sageinsure-api**: ${{ steps.versions.outputs.sageinsure-api_version }}
+            - **sageinsure-frontend**: ${{ steps.versions.outputs.sageinsure-frontend_version }}
+            - **sageinsure-worker**: ${{ steps.versions.outputs.sageinsure-worker_version }}
+
+            ### Installation
+            ```bash
+            # Add the repository
+            helm repo add sageinsure https://github.com/${{ github.repository }}/releases/download/helm-charts/
+            helm repo update
+
+            # Install charts
+            helm install sageinsure-api sageinsure/sageinsure-api
+            helm install sageinsure-frontend sageinsure/sageinsure-frontend
+            helm install sageinsure-worker sageinsure/sageinsure-worker
+            ```
+
+            ### Changes
+            - Updated chart versions
+            - Security and compliance improvements
+            - Bug fixes and enhancements
+          files: |
+            .helm-packages/*.tgz
+            .helm-packages/index.yaml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  update-helm-repository:
+    name: Update Helm Repository
+    runs-on: ubuntu-latest
+    needs: package-and-release
+
+    steps:
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download release artifacts
+        run: |
+          # Download the latest release artifacts
+          latest_release=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases" | jq -r '.[0].tag_name')
+
+          # Download chart packages and index
+          curl -L "https://github.com/${{ github.repository }}/releases/download/$latest_release/index.yaml" -o index.yaml
+
+          mkdir -p charts
+          for chart in sageinsure-api sageinsure-frontend sageinsure-worker; do
+            # Find the chart file in the release
+            chart_url=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/$latest_release" | \
+              jq -r ".assets[] | select(.name | contains(\"$chart\")) | .browser_download_url")
+            
+            if [ "$chart_url" != "null" ]; then
+              curl -L "$chart_url" -o "charts/$(basename "$chart_url")"
+            fi
+          done
+
+      - name: Commit and push updates
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+          git add .
+          git commit -m "Update Helm repository with latest charts" || exit 0
+          git push

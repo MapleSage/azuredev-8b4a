@@ -66,6 +66,17 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ include "sageinsure-api.fullname" . }}-config
+          {{- if .Values.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.startupProbe.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.startupProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.startupProbe.failureThreshold }}
+            successThreshold: {{ .Values.startupProbe.successThreshold }}
+          {{- end }}
           {{- if .Values.healthCheck.enabled }}
           livenessProbe:
             httpGet:
@@ -75,6 +86,7 @@ spec:
             periodSeconds: {{ .Values.healthCheck.periodSeconds }}
             timeoutSeconds: {{ .Values.healthCheck.timeoutSeconds }}
             failureThreshold: {{ .Values.healthCheck.failureThreshold }}
+            successThreshold: {{ .Values.healthCheck.successThreshold }}
           {{- end }}
           {{- if .Values.readinessProbe.enabled }}
           readinessProbe:
@@ -85,6 +97,7 @@ spec:
             periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+            successThreshold: {{ .Values.readinessProbe.successThreshold }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

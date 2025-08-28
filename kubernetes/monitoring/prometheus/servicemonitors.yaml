@@ -1,0 +1,101 @@
+# Prometheus ServiceMonitor resources for SageInsure applications
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sageinsure-api-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: sageinsure-api
+    app.kubernetes.io/part-of: sageinsure
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+  namespaceSelector:
+    matchNames:
+      - default
+      - staging
+      - development
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sageinsure-frontend-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: sageinsure-frontend
+    app.kubernetes.io/part-of: sageinsure
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-frontend
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+  namespaceSelector:
+    matchNames:
+      - default
+      - staging
+      - development
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sageinsure-worker-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: sageinsure-worker
+    app.kubernetes.io/part-of: sageinsure
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-worker
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+  namespaceSelector:
+    matchNames:
+      - default
+      - staging
+      - development
+
+---
+# ServiceMonitor for NGINX Ingress Controller
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: nginx-ingress-controller-metrics
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/component: controller
+  endpoints:
+    - port: prometheus
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+      - ingress-nginx

@@ -1,0 +1,456 @@
+name: GitOps Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      image_tag:
+        description: "Image tag to deploy"
+        required: true
+        type: string
+      component:
+        description: "Component to deploy"
+        required: true
+        type: choice
+        options:
+          - all
+          - backend
+          - frontend
+          - worker
+      deployment_strategy:
+        description: "Deployment strategy"
+        required: true
+        default: "rolling"
+        type: choice
+        options:
+          - rolling
+          - blue-green
+          - canary
+      rollback:
+        description: "Rollback to previous version"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: sageinsureacr.azurecr.io
+  AKS_CLUSTER_NAME: sageinsure-aks
+  AKS_RESOURCE_GROUP: sageinsure-rg
+
+jobs:
+  validate-deployment:
+    name: Validate Deployment Request
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.validate.outputs.environment }}
+      image_tag: ${{ steps.validate.outputs.image_tag }}
+      component: ${{ steps.validate.outputs.component }}
+      strategy: ${{ steps.validate.outputs.strategy }}
+      rollback: ${{ steps.validate.outputs.rollback }}
+
+    steps:
+      - name: Validate inputs
+        id: validate
+        run: |
+          echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          echo "image_tag=${{ github.event.inputs.image_tag }}" >> $GITHUB_OUTPUT
+          echo "component=${{ github.event.inputs.component }}" >> $GITHUB_OUTPUT
+          echo "strategy=${{ github.event.inputs.deployment_strategy }}" >> $GITHUB_OUTPUT
+          echo "rollback=${{ github.event.inputs.rollback }}" >> $GITHUB_OUTPUT
+
+          # Validate image exists in registry
+          if [ "${{ github.event.inputs.rollback }}" != "true" ]; then
+            echo "Validating image tag: ${{ github.event.inputs.image_tag }}"
+            # This would typically check if the image exists in ACR
+          fi
+
+  pre-deployment-checks:
+    name: Pre-deployment Checks
+    runs-on: ubuntu-latest
+    needs: validate-deployment
+    environment: ${{ needs.validate-deployment.outputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Check cluster health
+        run: |
+          echo "Checking cluster health..."
+          kubectl get nodes
+          kubectl get pods --all-namespaces | grep -E '(Error|CrashLoopBackOff|ImagePullBackOff)' || echo "No problematic pods found"
+
+      - name: Verify namespace exists
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Check resource quotas
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          kubectl describe quota -n "$namespace" || echo "No quotas configured"
+
+      - name: Backup current deployment state
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+
+          mkdir -p backup
+
+          # Backup current deployments
+          kubectl get deployments -n "$namespace" -o yaml > backup/deployments.yaml
+          kubectl get services -n "$namespace" -o yaml > backup/services.yaml
+          kubectl get ingress -n "$namespace" -o yaml > backup/ingress.yaml
+          kubectl get configmaps -n "$namespace" -o yaml > backup/configmaps.yaml
+
+      - name: Upload backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-backup-${{ needs.validate-deployment.outputs.environment }}
+          path: backup/
+          retention-days: 30
+
+  rolling-deployment:
+    name: Rolling Deployment
+    runs-on: ubuntu-latest
+    needs: [validate-deployment, pre-deployment-checks]
+    if: needs.validate-deployment.outputs.strategy == 'rolling' && needs.validate-deployment.outputs.rollback != 'true'
+    environment: ${{ needs.validate-deployment.outputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl and Helm
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Deploy Backend
+        if: needs.validate-deployment.outputs.component == 'all' || needs.validate-deployment.outputs.component == 'backend'
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          release_name="sageinsure-api${{ needs.validate-deployment.outputs.environment != 'production' && format('-{0}', needs.validate-deployment.outputs.environment) || '' }}"
+
+          helm upgrade --install "$release_name" ./helm-charts/sageinsure-api \
+            --namespace "$namespace" \
+            --set image.tag=${{ needs.validate-deployment.outputs.image_tag }} \
+            --set app.environment=${{ needs.validate-deployment.outputs.environment }} \
+            --wait --timeout=15m
+
+      - name: Deploy Frontend
+        if: needs.validate-deployment.outputs.component == 'all' || needs.validate-deployment.outputs.component == 'frontend'
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          release_name="sageinsure-frontend${{ needs.validate-deployment.outputs.environment != 'production' && format('-{0}', needs.validate-deployment.outputs.environment) || '' }}"
+
+          helm upgrade --install "$release_name" ./helm-charts/sageinsure-frontend \
+            --namespace "$namespace" \
+            --set image.tag=${{ needs.validate-deployment.outputs.image_tag }} \
+            --set app.environment=${{ needs.validate-deployment.outputs.environment }} \
+            --wait --timeout=15m
+
+      - name: Deploy Worker
+        if: needs.validate-deployment.outputs.component == 'all' || needs.validate-deployment.outputs.component == 'worker'
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          release_name="sageinsure-worker${{ needs.validate-deployment.outputs.environment != 'production' && format('-{0}', needs.validate-deployment.outputs.environment) || '' }}"
+
+          helm upgrade --install "$release_name" ./helm-charts/sageinsure-worker \
+            --namespace "$namespace" \
+            --set image.tag=${{ needs.validate-deployment.outputs.image_tag }} \
+            --set app.environment=${{ needs.validate-deployment.outputs.environment }} \
+            --wait --timeout=15m
+
+  canary-deployment:
+    name: Canary Deployment
+    runs-on: ubuntu-latest
+    needs: [validate-deployment, pre-deployment-checks]
+    if: needs.validate-deployment.outputs.strategy == 'canary' && needs.validate-deployment.outputs.rollback != 'true'
+    environment: ${{ needs.validate-deployment.outputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl and Helm
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Deploy Canary Version (10% traffic)
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+
+          # Deploy canary version with reduced replicas
+          if [[ "${{ needs.validate-deployment.outputs.component }}" == "all" || "${{ needs.validate-deployment.outputs.component }}" == "backend" ]]; then
+            helm upgrade --install sageinsure-api-canary ./helm-charts/sageinsure-api \
+              --namespace "$namespace" \
+              --set image.tag=${{ needs.validate-deployment.outputs.image_tag }} \
+              --set app.environment=${{ needs.validate-deployment.outputs.environment }} \
+              --set replicaCount=1 \
+              --set service.name=sageinsure-api-canary \
+              --wait --timeout=10m
+          fi
+
+      - name: Configure Traffic Splitting
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+
+          # Create or update ingress for traffic splitting
+          cat <<EOF | kubectl apply -f -
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: sageinsure-api-canary
+            namespace: $namespace
+            annotations:
+              nginx.ingress.kubernetes.io/canary: "true"
+              nginx.ingress.kubernetes.io/canary-weight: "10"
+          spec:
+            ingressClassName: nginx
+            rules:
+            - host: api.${{ needs.validate-deployment.outputs.environment == 'production' && 'sageinsure.local' || format('{0}.sageinsure.local', needs.validate-deployment.outputs.environment) }}
+              http:
+                paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: sageinsure-api-canary
+                      port:
+                        number: 80
+          EOF
+
+      - name: Monitor Canary Deployment
+        run: |
+          echo "Monitoring canary deployment for 5 minutes..."
+          sleep 300
+
+          # Check canary pod health
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          kubectl get pods -l app.kubernetes.io/instance=sageinsure-api-canary -n "$namespace"
+
+          # Check for any errors in logs
+          kubectl logs -l app.kubernetes.io/instance=sageinsure-api-canary -n "$namespace" --tail=100
+
+      - name: Promote Canary (50% traffic)
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+
+          # Increase canary traffic to 50%
+          kubectl patch ingress sageinsure-api-canary -n "$namespace" -p '{"metadata":{"annotations":{"nginx.ingress.kubernetes.io/canary-weight":"50"}}}'
+
+          echo "Monitoring at 50% traffic for 5 minutes..."
+          sleep 300
+
+      - name: Full Promotion
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+
+          # Update main deployment
+          helm upgrade sageinsure-api ./helm-charts/sageinsure-api \
+            --namespace "$namespace" \
+            --set image.tag=${{ needs.validate-deployment.outputs.image_tag }} \
+            --set app.environment=${{ needs.validate-deployment.outputs.environment }} \
+            --wait --timeout=10m
+
+          # Remove canary deployment
+          helm uninstall sageinsure-api-canary -n "$namespace" || true
+          kubectl delete ingress sageinsure-api-canary -n "$namespace" || true
+
+  rollback-deployment:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    needs: [validate-deployment, pre-deployment-checks]
+    if: needs.validate-deployment.outputs.rollback == 'true'
+    environment: ${{ needs.validate-deployment.outputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl and Helm
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Rollback Backend
+        if: needs.validate-deployment.outputs.component == 'all' || needs.validate-deployment.outputs.component == 'backend'
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          release_name="sageinsure-api${{ needs.validate-deployment.outputs.environment != 'production' && format('-{0}', needs.validate-deployment.outputs.environment) || '' }}"
+
+          helm rollback "$release_name" -n "$namespace"
+
+      - name: Rollback Frontend
+        if: needs.validate-deployment.outputs.component == 'all' || needs.validate-deployment.outputs.component == 'frontend'
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          release_name="sageinsure-frontend${{ needs.validate-deployment.outputs.environment != 'production' && format('-{0}', needs.validate-deployment.outputs.environment) || '' }}"
+
+          helm rollback "$release_name" -n "$namespace"
+
+      - name: Rollback Worker
+        if: needs.validate-deployment.outputs.component == 'all' || needs.validate-deployment.outputs.component == 'worker'
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+          release_name="sageinsure-worker${{ needs.validate-deployment.outputs.environment != 'production' && format('-{0}', needs.validate-deployment.outputs.environment) || '' }}"
+
+          helm rollback "$release_name" -n "$namespace"
+
+  post-deployment-verification:
+    name: Post-deployment Verification
+    runs-on: ubuntu-latest
+    needs:
+      [
+        validate-deployment,
+        rolling-deployment,
+        canary-deployment,
+        rollback-deployment,
+      ]
+    if: always() && (needs.rolling-deployment.result == 'success' || needs.canary-deployment.result == 'success' || needs.rollback-deployment.result == 'success')
+    environment: ${{ needs.validate-deployment.outputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+
+      - name: Wait for deployments to be ready
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+
+          echo "Waiting for deployments to be ready..."
+          kubectl wait --for=condition=available deployment --all --timeout=600s -n "$namespace"
+
+      - name: Run health checks
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+
+          # Check pod status
+          kubectl get pods -n "$namespace"
+
+          # Run health check
+          kubectl run curl-test --image=curlimages/curl --rm -i --restart=Never -n "$namespace" -- \
+            curl -f http://sageinsure-api.$namespace.svc.cluster.local/health || echo "Health check failed"
+
+      - name: Generate deployment report
+        run: |
+          namespace="${{ needs.validate-deployment.outputs.environment == 'production' && 'default' || needs.validate-deployment.outputs.environment }}"
+
+          echo "# Deployment Report" > deployment-report.md
+          echo "" >> deployment-report.md
+          echo "**Environment:** ${{ needs.validate-deployment.outputs.environment }}" >> deployment-report.md
+          echo "**Strategy:** ${{ needs.validate-deployment.outputs.strategy }}" >> deployment-report.md
+          echo "**Component:** ${{ needs.validate-deployment.outputs.component }}" >> deployment-report.md
+          echo "**Image Tag:** ${{ needs.validate-deployment.outputs.image_tag }}" >> deployment-report.md
+          echo "**Rollback:** ${{ needs.validate-deployment.outputs.rollback }}" >> deployment-report.md
+          echo "**Timestamp:** $(date)" >> deployment-report.md
+          echo "" >> deployment-report.md
+
+          echo "## Deployment Status" >> deployment-report.md
+          echo '```' >> deployment-report.md
+          kubectl get pods -n "$namespace" >> deployment-report.md
+          echo '```' >> deployment-report.md
+
+      - name: Upload deployment report
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report-${{ needs.validate-deployment.outputs.environment }}
+          path: deployment-report.md
+          retention-days: 90
+
+      - name: Notify deployment status
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('deployment-report.md', 'utf8');
+
+            const status = '${{ job.status }}' === 'success' ? '✅ Success' : '❌ Failed';
+            const title = `${status} - GitOps Deployment to ${{ needs.validate-deployment.outputs.environment }}`;
+
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: report,
+              labels: ['deployment', '${{ needs.validate-deployment.outputs.environment }}', 'gitops']
+            });

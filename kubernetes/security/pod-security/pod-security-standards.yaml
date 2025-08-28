@@ -1,0 +1,111 @@
+# Pod Security Standards for SageInsure
+# Implements Kubernetes Pod Security Standards for enhanced security
+
+# Production namespace with restricted security policy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    environment: production
+    app.kubernetes.io/part-of: sageinsure
+
+---
+# Staging namespace with baseline security policy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    environment: staging
+    app.kubernetes.io/part-of: sageinsure
+
+---
+# Development namespace with baseline security policy
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+    environment: development
+    app.kubernetes.io/part-of: sageinsure
+
+---
+# Security Context Constraints for SageInsure applications
+apiVersion: v1
+kind: SecurityContextConstraints
+metadata:
+  name: sageinsure-restricted-scc
+  annotations:
+    kubernetes.io/description: "Restricted security context constraints for SageInsure applications"
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegedContainer: false
+allowedCapabilities: []
+defaultAddCapabilities: []
+requiredDropCapabilities:
+  - ALL
+fsGroup:
+  type: MustRunAs
+  ranges:
+    - min: 1000
+      max: 65535
+readOnlyRootFilesystem: true
+runAsUser:
+  type: MustRunAsNonRoot
+seLinuxContext:
+  type: MustRunAs
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+    - min: 1000
+      max: 65535
+volumes:
+  - configMap
+  - downwardAPI
+  - emptyDir
+  - persistentVolumeClaim
+  - projected
+  - secret
+  - csi
+users:
+  - system:serviceaccount:default:sageinsure-api
+  - system:serviceaccount:default:sageinsure-frontend
+  - system:serviceaccount:default:sageinsure-worker
+  - system:serviceaccount:staging:sageinsure-api
+  - system:serviceaccount:staging:sageinsure-frontend
+  - system:serviceaccount:staging:sageinsure-worker
+
+---
+# Resource Quotas for security and resource management
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sageinsure-resource-quota
+  namespace: default
+spec:
+  hard:
+    requests.cpu: "10"
+    requests.memory: 20Gi
+    limits.cpu: "20"
+    limits.memory: 40Gi
+    persistentvolumeclaims: "10"
+    pods: "50"
+    services: "20"
+    secrets: "50"
+    configmaps: "50"
+    count/deployments.apps: "20"
+    count/jobs.batch: "10"
+    count/cronjobs.batch: "10"

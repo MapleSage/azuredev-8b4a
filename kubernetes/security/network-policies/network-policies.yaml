@@ -1,0 +1,164 @@
+# Network Security Policies for SageInsure
+# Implements zero-trust network security model
+
+# Default deny all ingress and egress traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Allow DNS resolution for all pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-access
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Allow ingress traffic to API pods from ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-ingress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+
+---
+# Allow ingress traffic to frontend pods from ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-ingress
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+# Allow frontend to communicate with API
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-api
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sageinsure-api
+      ports:
+        - protocol: TCP
+          port: 8000
+
+---
+# Allow API to access Azure services (HTTPS)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-azure-services
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-api
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 80
+
+---
+# Allow worker pods to access Azure services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-worker-azure-services
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-worker
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# Allow monitoring namespace to scrape metrics
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scraping
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: sageinsure
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 9090

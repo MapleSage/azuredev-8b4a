@@ -1,0 +1,170 @@
+# Network Security Policies for SageInsure
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all-ingress-egress
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# Allow DNS resolution
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-access
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Allow HTTPS egress for Azure services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-azure-services-https
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: sageinsure
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+
+---
+# Allow ingress from NGINX Ingress Controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: sageinsure
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Allow API to communicate with worker services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-worker
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-worker
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sageinsure-api
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+# Allow monitoring access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scraping
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: sageinsure
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 9090
+
+---
+# Staging environment network policies
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: staging-default-deny
+  namespace: staging
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: staging-allow-dns
+  namespace: staging
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: staging-allow-azure-services
+  namespace: staging
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: sageinsure
+  policyTypes:
+    - Egress
+  egress:
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80

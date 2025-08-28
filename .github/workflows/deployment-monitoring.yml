@@ -1,0 +1,111 @@
+name: Deployment Monitoring
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to monitor"
+        required: true
+        type: choice
+        options:
+          - all
+          - production
+          - staging
+          - development
+
+env:
+  AKS_CLUSTER_NAME: sageinsure-aks
+  AKS_RESOURCE_GROUP: sageinsure-rg
+
+jobs:
+  health-check:
+    name: Application Health Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [production, staging]
+
+    steps:
+      - name: Check if monitoring needed
+        id: check
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" == "all" ]] || [[ "${{ github.event.inputs.environment }}" == "${{ matrix.environment }}" ]] || [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "monitor=true" >> $GITHUB_OUTPUT
+          else
+            echo "monitor=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Azure Login
+        if: steps.check.outputs.monitor == 'true'
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set up kubectl
+        if: steps.check.outputs.monitor == 'true'
+        uses: azure/setup-kubectl@v3
+
+      - name: Get AKS credentials
+        if: steps.check.outputs.monitor == 'true'
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ env.AKS_RESOURCE_GROUP }} \
+            --name ${{ env.AKS_CLUSTER_NAME }} \
+            --overwrite-existing
+      - name: Check pod health
+        if: steps.check.outputs.monitor == 'true'
+        run: |
+          namespace="${{ matrix.environment == 'production' && 'default' || matrix.environment }}"
+
+          echo "Checking pod health in $namespace namespace..."
+          kubectl get pods -n "$namespace"
+
+          # Check for unhealthy pods
+          unhealthy_pods=$(kubectl get pods -n "$namespace" --field-selector=status.phase!=Running --no-headers | wc -l)
+          if [ "$unhealthy_pods" -gt 0 ]; then
+            echo "Found $unhealthy_pods unhealthy pods"
+            kubectl get pods -n "$namespace" --field-selector=status.phase!=Running
+            exit 1
+          fi
+
+      - name: Check service endpoints
+        if: steps.check.outputs.monitor == 'true'
+        run: |
+          namespace="${{ matrix.environment == 'production' && 'default' || matrix.environment }}"
+
+          # Test API health endpoint
+          kubectl run health-check-${{ matrix.environment }} --image=curlimages/curl --rm -i --restart=Never -n "$namespace" -- \
+            curl -f -m 30 http://sageinsure-api.$namespace.svc.cluster.local/health || echo "API health check failed"
+
+      - name: Generate health report
+        if: steps.check.outputs.monitor == 'true' && failure()
+        run: |
+          namespace="${{ matrix.environment == 'production' && 'default' || matrix.environment }}"
+
+          echo "# Health Check Report - ${{ matrix.environment }}" > health-report-${{ matrix.environment }}.md
+          echo "**Timestamp:** $(date)" >> health-report-${{ matrix.environment }}.md
+          echo "" >> health-report-${{ matrix.environment }}.md
+          echo "## Pod Status" >> health-report-${{ matrix.environment }}.md
+          echo '```' >> health-report-${{ matrix.environment }}.md
+          kubectl get pods -n "$namespace" >> health-report-${{ matrix.environment }}.md
+          echo '```' >> health-report-${{ matrix.environment }}.md
+
+      - name: Create incident issue
+        if: steps.check.outputs.monitor == 'true' && failure()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('health-report-${{ matrix.environment }}.md', 'utf8');
+
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Health Check Failed - ${{ matrix.environment }}',
+              body: `Health check failed for ${{ matrix.environment }} environment.\n\n${report}`,
+              labels: ['incident', 'health-check', '${{ matrix.environment }}']
+            });

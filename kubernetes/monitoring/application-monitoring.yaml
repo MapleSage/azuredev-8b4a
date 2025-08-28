@@ -1,0 +1,82 @@
+# Application-specific monitoring configurations
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sageinsure-monitoring-config
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+data:
+  custom-metrics.yml: |
+    # Custom metrics configuration for SageInsure applications
+    business_metrics:
+      - name: insurance_quotes_generated
+        help: "Total number of insurance quotes generated"
+        type: counter
+        labels: ["product_type", "user_type"]
+      
+      - name: policy_processing_duration
+        help: "Time taken to process insurance policies"
+        type: histogram
+        labels: ["policy_type", "complexity"]
+        buckets: [0.1, 0.5, 1.0, 2.5, 5.0, 10.0]
+      
+      - name: document_analysis_requests
+        help: "Number of document analysis requests"
+        type: counter
+        labels: ["document_type", "status"]
+      
+      - name: ai_model_inference_time
+        help: "Time taken for AI model inference"
+        type: histogram
+        labels: ["model_name", "input_size"]
+        buckets: [0.01, 0.05, 0.1, 0.5, 1.0, 2.0]
+
+---
+# PodMonitor for worker pods that don't expose HTTP metrics
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: sageinsure-worker-pods
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: sageinsure-worker
+    app.kubernetes.io/part-of: sageinsure
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-worker
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+  namespaceSelector:
+    matchNames:
+      - default
+      - staging
+      - development
+
+---
+# NetworkPolicy to allow Prometheus to scrape metrics
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scraping
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: sageinsure
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080 # metrics port
+        - protocol: TCP
+          port: 9090 # prometheus port

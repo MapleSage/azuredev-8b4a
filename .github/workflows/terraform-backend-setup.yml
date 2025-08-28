@@ -1,0 +1,60 @@
+name: Setup Terraform Backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to setup backend for"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - production
+          - staging
+          - development
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+
+jobs:
+  setup-backend:
+    name: Setup Terraform Backend
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Storage Account for Terraform State
+        run: |
+          RESOURCE_GROUP="sageinsure-rg"
+          STORAGE_ACCOUNT="sageinsureterraform${{ github.event.inputs.environment }}"
+          CONTAINER_NAME="tfstate"
+          LOCATION="eastus"
+
+          az storage account create \
+            --name $STORAGE_ACCOUNT \
+            --resource-group $RESOURCE_GROUP \
+            --location $LOCATION \
+            --sku Standard_LRS \
+            --encryption-services blob \
+            --https-only true \
+            --min-tls-version TLS1_2 \
+            --allow-blob-public-access false
+
+          ACCOUNT_KEY=$(az storage account keys list --resource-group $RESOURCE_GROUP --account-name $STORAGE_ACCOUNT --query '[0].value' -o tsv)
+
+          az storage container create \
+            --name $CONTAINER_NAME \
+            --account-name $STORAGE_ACCOUNT \
+            --account-key $ACCOUNT_KEY \
+            --public-access off

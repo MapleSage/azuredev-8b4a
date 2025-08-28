@@ -1,0 +1,105 @@
+# Prometheus AlertManager Rules for SageInsure Applications
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sageinsure-application-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: sageinsure
+    prometheus: kube-prometheus
+spec:
+  groups:
+    - name: sageinsure.api.alerts
+      rules:
+        - alert: SageInsureAPIDown
+          expr: up{job="sageinsure-api"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            component: api
+          annotations:
+            summary: "SageInsure API is down"
+            description: "SageInsure API has been down for more than 1 minute"
+
+        - alert: SageInsureAPIHighErrorRate
+          expr: rate(http_requests_total{job="sageinsure-api",status=~"5.."}[5m]) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "High error rate in SageInsure API"
+            description: "Error rate is {{ $value }} errors per second"
+
+        - alert: SageInsureAPIHighLatency
+          expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="sageinsure-api"}[5m])) > 2
+          for: 5m
+          labels:
+            severity: warning
+            component: api
+          annotations:
+            summary: "High latency in SageInsure API"
+            description: "95th percentile latency is {{ $value }}s"
+
+    - name: sageinsure.pods.alerts
+      rules:
+        - alert: SageInsurePodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total{namespace=~"default|staging|development",pod=~"sageinsure-.*"}[15m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: infrastructure
+          annotations:
+            summary: "Pod {{ $labels.pod }} is crash looping"
+            description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is restarting frequently"
+    - alert: SageInsurePodNotReady
+      expr: kube_pod_status_ready{condition="false",namespace=~"default|staging|development",pod=~"sageinsure-.*"} == 1
+      for: 10m
+      labels:
+        severity: warning
+        component: infrastructure
+      annotations:
+        summary: "Pod {{ $labels.pod }} not ready"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has been not ready for more than 10 minutes"
+
+    - alert: SageInsurePodHighMemoryUsage
+      expr: container_memory_usage_bytes{namespace=~"default|staging|development",pod=~"sageinsure-.*"} / container_spec_memory_limit_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        component: infrastructure
+      annotations:
+        summary: "High memory usage in pod {{ $labels.pod }}"
+        description: "Pod {{ $labels.pod }} is using {{ $value | humanizePercentage }} of its memory limit"
+
+    - alert: SageInsurePodHighCPUUsage
+      expr: rate(container_cpu_usage_seconds_total{namespace=~"default|staging|development",pod=~"sageinsure-.*"}[5m]) / container_spec_cpu_quota * container_spec_cpu_period > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        component: infrastructure
+      annotations:
+        summary: "High CPU usage in pod {{ $labels.pod }}"
+        description: "Pod {{ $labels.pod }} is using {{ $value | humanizePercentage }} of its CPU limit"
+
+  - name: sageinsure.ingress.alerts
+    rules:
+    - alert: SageInsureIngressHighLatency
+      expr: histogram_quantile(0.95, rate(nginx_ingress_controller_request_duration_seconds_bucket{ingress=~"sageinsure-.*"}[5m])) > 5
+      for: 5m
+      labels:
+        severity: warning
+        component: ingress
+      annotations:
+        summary: "High ingress latency for {{ $labels.ingress }}"
+        description: "95th percentile latency is {{ $value }}s for ingress {{ $labels.ingress }}"
+
+    - alert: SageInsureIngressHighErrorRate
+      expr: rate(nginx_ingress_controller_requests_total{ingress=~"sageinsure-.*",status=~"5.."}[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+        component: ingress
+      annotations:
+        summary: "High error rate for ingress {{ $labels.ingress }}"
+        description: "Error rate is {{ $value }} errors per second for ingress {{ $labels.ingress }}"

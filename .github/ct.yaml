@@ -1,0 +1,15 @@
+# Chart Testing Configuration
+target-branch: main
+chart-dirs:
+  - helm-charts
+chart-repos:
+  - prometheus-community=https://prometheus-community.github.io/helm-charts
+  - ingress-nginx=https://kubernetes.github.io/ingress-nginx
+  - jetstack=https://charts.jetstack.io
+helm-extra-args: --timeout 600s
+check-version-increment: true
+validate-maintainers: false
+excluded-charts: []
+additional-commands:
+  - kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+  - kubectl create namespace ingress-nginx --dry-run=client -o yaml | kubectl apply -f -

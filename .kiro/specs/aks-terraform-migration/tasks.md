@@ -86,14 +86,14 @@
   - Set up rate limiting and security headers
   - _Requirements: 3.1, 3.2, 3.4_
 
-- [ ] 11. Build CI/CD pipeline for infrastructure
+- [x] 11. Build CI/CD pipeline for infrastructure
 
   - Create GitHub Actions or Azure DevOps pipeline for Terraform
   - Implement terraform plan/apply workflow with approval gates
   - Configure secure service principal authentication and state locking
   - _Requirements: 6.1, 6.3_
 
-- [ ] 12. Create application CI/CD pipeline
+- [x] 12. Create application CI/CD pipeline
 
   - Build container image pipeline with security scanning
   - Configure Azure Container Registry integration
@@ -114,7 +114,7 @@
   - Configure container image scanning in CI/CD pipeline
   - _Requirements: 8.1, 8.2, 8.3_
 
-- [ ] 15. Create health check and probe implementations
+- [-] 15. Create health check and probe implementations
 
   - Implement /healthz endpoint in FastAPI application
   - Add dependency checks for Azure services connectivity

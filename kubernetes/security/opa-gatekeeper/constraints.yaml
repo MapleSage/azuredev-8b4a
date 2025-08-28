@@ -1,0 +1,70 @@
+# OPA Gatekeeper Constraints for SageInsure
+# Apply security policies to SageInsure workloads
+
+# Enforce Security Context for SageInsure apps
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireSecurityContext
+metadata:
+  name: sageinsure-security-context
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/part-of: sageinsure
+  parameters:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+
+---
+# Enforce Resource Limits
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireResourceLimits
+metadata:
+  name: sageinsure-resource-limits
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/part-of: sageinsure
+
+---
+# Disallow Privileged Containers
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sDisallowPrivileged
+metadata:
+  name: disallow-privileged-containers
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "DaemonSet", "StatefulSet"]
+      - apiGroups: [""]
+        kinds: ["Pod"]
+
+---
+# Require Labels
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequireLabels
+metadata:
+  name: sageinsure-require-labels
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/part-of: sageinsure
+  parameters:
+    labels:
+      - "app.kubernetes.io/name"
+      - "app.kubernetes.io/version"
+      - "app.kubernetes.io/component"
+      - "app.kubernetes.io/part-of"

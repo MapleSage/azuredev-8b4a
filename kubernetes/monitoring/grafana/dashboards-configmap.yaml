@@ -1,0 +1,143 @@
+# Grafana Dashboard ConfigMaps for SageInsure
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sageinsure-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: sageinsure
+data:
+  sageinsure-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "SageInsure Overview",
+        "tags": ["sageinsure", "overview"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "API Request Rate",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{job=\"sageinsure-api\"}[5m]))",
+                "legendFormat": "Requests/sec"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "reqps",
+                "color": {"mode": "palette-classic"}
+              }
+            }
+          },
+          {
+            "id": 2,
+            "title": "Error Rate %",
+            "type": "stat",
+            "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{job=\"sageinsure-api\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"sageinsure-api\"}[5m])) * 100",
+                "legendFormat": "Error Rate"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "color": {"mode": "thresholds"},
+                "thresholds": {
+                  "steps": [
+                    {"color": "green", "value": null},
+                    {"color": "yellow", "value": 1},
+                    {"color": "red", "value": 5}
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sageinsure-infrastructure-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/part-of: sageinsure
+data:
+  sageinsure-infrastructure.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "SageInsure Infrastructure",
+        "tags": ["sageinsure", "infrastructure", "kubernetes"],
+        "style": "dark",
+        "timezone": "browser",
+        "refresh": "30s",
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "panels": [
+          {
+            "id": 1,
+            "title": "Pod Status",
+            "type": "table",
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+            "targets": [
+              {
+                "expr": "kube_pod_status_phase{namespace=~\"default|staging|development\",pod=~\"sageinsure-.*\"}",
+                "legendFormat": "{{pod}} - {{phase}}"
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "title": "Memory Usage",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+            "targets": [
+              {
+                "expr": "container_memory_usage_bytes{namespace=~\"default|staging|development\",pod=~\"sageinsure-.*\"} / 1024 / 1024",
+                "legendFormat": "{{pod}} - {{container}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "MB"
+              }
+            }
+          },
+          {
+            "id": 3,
+            "title": "CPU Usage",
+            "type": "timeseries",
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+            "targets": [
+              {
+                "expr": "rate(container_cpu_usage_seconds_total{namespace=~\"default|staging|development\",pod=~\"sageinsure-.*\"}[5m]) * 100",
+                "legendFormat": "{{pod}} - {{container}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent"
+              }
+            }
+          }
+        ]
+      }
+    }
