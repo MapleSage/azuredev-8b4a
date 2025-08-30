@@ -5,9 +5,8 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
-  schedule:
-    # Run health checks every 4 hours
-    - cron: "0 */4 * * *"
+  # DISABLED schedule:
+  #   - cron: "0 */4 * * *"
   workflow_dispatch:
     inputs:
       environment:

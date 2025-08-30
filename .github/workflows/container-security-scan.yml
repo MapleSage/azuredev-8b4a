@@ -1,9 +1,8 @@
 name: Container Security Scanning
 
 on:
-  schedule:
-    # Run daily at 2 AM UTC
-    - cron: "0 2 * * *"
+  # DISABLED schedule:
+  #   - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
       image_tag:
