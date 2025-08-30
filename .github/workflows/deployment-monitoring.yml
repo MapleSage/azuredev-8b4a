@@ -1,9 +1,9 @@
 name: Deployment Monitoring
 
 on:
-  schedule:
-    # Run every 2 hours instead of 15 minutes
-    - cron: "0 */2 * * *"
+  # Temporarily disable scheduled runs to stop failures
+  # schedule:
+  #   - cron: "0 */2 * * *"
   workflow_dispatch:
     inputs:
       environment:
