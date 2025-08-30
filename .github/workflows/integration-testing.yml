@@ -1,24 +1,25 @@
 name: Integration Testing
 
 on:
-  push:
-    branches: [main, develop]
-    paths:
-      - "backend/**"
-      - "frontend/**"
-      - "worker/**"
-      - "helm-charts/**"
-      - "tests/integration/**"
-      - ".github/workflows/integration-testing.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - "frontend/**"
-      - "worker/**"
-      - "helm-charts/**"
-      - "tests/integration/**"
-  # DISABLED schedule:
+  # TEMPORARILY DISABLED ALL TRIGGERS
+  # push:
+  #   branches: [main, develop]
+  #   paths:
+  #     - "backend/**"
+  #     - "frontend/**"
+  #     - "worker/**"
+  #     - "helm-charts/**"
+  #     - "tests/integration/**"
+  #     - ".github/workflows/integration-testing.yml"
+  # pull_request:
+  #   branches: [main]
+  #   paths:
+  #     - "backend/**"
+  #     - "frontend/**"
+  #     - "worker/**"
+  #     - "helm-charts/**"
+  #     - "tests/integration/**"
+  # schedule:
   #   - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:

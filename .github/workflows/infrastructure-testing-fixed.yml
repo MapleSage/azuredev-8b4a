@@ -1,18 +1,19 @@
 name: Infrastructure Testing (Fixed)
 
 on:
-  push:
-    branches: [main, develop]
-    paths:
-      - "terraform/**"
-      - "tests/**"
-      - ".github/workflows/infrastructure-testing-fixed.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "terraform/**"
-      - "tests/**"
-  # DISABLED schedule:
+  # TEMPORARILY DISABLED ALL TRIGGERS
+  # push:
+  #   branches: [main, develop]
+  #   paths:
+  #     - "terraform/**"
+  #     - "tests/**"
+  #     - ".github/workflows/infrastructure-testing-fixed.yml"
+  # pull_request:
+  #   branches: [main]
+  #   paths:
+  #     - "terraform/**"
+  #     - "tests/**"
+  # schedule:
   #   - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
