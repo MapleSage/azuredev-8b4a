@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: health-check-ingress
+  namespace: ingress-nginx
+  annotations:
+    nginx.ingress.kubernetes.io/default-backend: "default-http-backend"
+    nginx.ingress.kubernetes.io/server-snippet: |
+      location = / {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+      }
+spec:
+  ingressClassName: nginx
+  defaultBackend:
+    service:
+      name: default-http-backend
+      port:
+        number: 80

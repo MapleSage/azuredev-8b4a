@@ -4,6 +4,8 @@
 import { NextResponse } from "next/server";
 import { getLivenessStatus } from "../../../../health/health-check";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const result = await getLivenessStatus();

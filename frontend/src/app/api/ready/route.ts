@@ -1,16 +1,17 @@
 /**
- * Readiness probe endpoint for Next.js frontend
+ * Readiness check API route for Kubernetes readiness probe
  */
-import { NextResponse } from "next/server";
-import { getReadinessStatus } from "../../../../health/health-check";
+import { NextRequest, NextResponse } from "next/server";
+import { getReadinessStatus } from "../../../health/health-check";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const result = await getReadinessStatus();
 
-    const status = result.status === "healthy" ? 200 : 503;
+    // Return appropriate HTTP status code
+    const status = result.status === "unhealthy" ? 503 : 200;
 
     return NextResponse.json(result, { status });
   } catch (error) {

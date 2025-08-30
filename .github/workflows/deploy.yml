@@ -1,0 +1,26 @@
+name: Deploy to AKS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        run: |
+          az aks get-credentials --resource-group sageinsure-rg --name sageinsure-aks --overwrite-existing
+
+      - name: Deploy to AKS
+        run: |
+          kubectl apply -f health-ingress.yaml
+          kubectl get pods -n ingress-nginx

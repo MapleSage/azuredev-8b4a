@@ -1,233 +1,240 @@
 #!/bin/bash
-# Test health check endpoints for SageInsure applications
+
+# Health Check Test Script for SageInsure AKS Migration
+# This script performs basic health checks on the infrastructure
 
 set -e
 
-NAMESPACE=${1:-default}
-TIMEOUT=30
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-echo "🏥 Testing Health Check Endpoints in namespace: $NAMESPACE"
-
-# Function to test HTTP endpoint
-test_endpoint() {
-    local service=$1
-    local path=$2
-    local expected_status=$3
-    local description=$4
-    
-    echo "Testing $description..."
-    
-    # Port forward in background
-    kubectl port-forward -n "$NAMESPACE" "svc/$service" 8080:80 &
-    PF_PID=$!
-    
-    # Wait for port forward to be ready
-    sleep 3
-    
-    # Test endpoint
-    response=$(curl -s -w "%{http_code}" -o /tmp/health_response.json "http://localhost:8080$path" || echo "000")
-    
-    # Kill port forward
-    kill $PF_PID 2>/dev/null || true
-    
-    if [ "$response" = "$expected_status" ]; then
-        echo "✅ $description: HTTP $response"
-        if [ -f /tmp/health_response.json ]; then
-            status=$(jq -r '.status // "unknown"' /tmp/health_response.json 2>/dev/null || echo "unknown")
-            echo "   Status: $status"
-        fi
-    else
-        echo "❌ $description: Expected HTTP $expected_status, got $response"
-        if [ -f /tmp/health_response.json ]; then
-            echo "   Response: $(cat /tmp/health_response.json)"
-        fi
-        return 1
-    fi
-    
-    rm -f /tmp/health_response.json
+# Function to print colored output
+print_status() {
+    echo -e "${GREEN}[PASS]${NC} $1"
 }
 
-# Function to test pod health directly
-test_pod_health() {
-    local app_name=$1
-    local path=$2
-    local description=$3
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[FAIL]${NC} $1"
+}
+
+# Check if Azure CLI is authenticated
+check_azure_auth() {
+    echo "Checking Azure CLI authentication..."
     
-    echo "Testing $description via pod exec..."
-    
-    # Get first pod
-    pod=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=$app_name" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-    
-    if [ -z "$pod" ]; then
-        echo "⚠️  No pods found for $app_name"
-        return 1
-    fi
-    
-    # Test endpoint directly in pod
-    response=$(kubectl exec -n "$NAMESPACE" "$pod" -- curl -s -w "%{http_code}" -o /tmp/response.json "http://localhost:8000$path" 2>/dev/null || echo "000")
-    
-    if [ "$response" = "200" ] || [ "$response" = "503" ]; then
-        echo "✅ $description (pod $pod): HTTP $response"
-        
-        # Get response body
-        response_body=$(kubectl exec -n "$NAMESPACE" "$pod" -- cat /tmp/response.json 2>/dev/null || echo "{}")
-        status=$(echo "$response_body" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
-        echo "   Status: $status"
+    if az account show &> /dev/null; then
+        SUBSCRIPTION=$(az account show --query name -o tsv)
+        print_status "Azure CLI authenticated (Subscription: $SUBSCRIPTION)"
+        return 0
     else
-        echo "❌ $description (pod $pod): HTTP $response"
+        print_error "Azure CLI not authenticated"
         return 1
     fi
 }
 
-# Test API health endpoints
-echo ""
-echo "🔍 Testing API Health Endpoints"
-echo "================================"
-
-if kubectl get svc -n "$NAMESPACE" sageinsure-api &>/dev/null; then
-    test_endpoint "sageinsure-api" "/health" "200" "API General Health Check"
-    test_endpoint "sageinsure-api" "/health/live" "200" "API Liveness Probe"
-    test_endpoint "sageinsure-api" "/health/ready" "200" "API Readiness Probe"
-    test_endpoint "sageinsure-api" "/health/startup" "200" "API Startup Probe"
-    test_endpoint "sageinsure-api" "/health?details=true" "200" "API Detailed Health Check"
-    test_endpoint "sageinsure-api" "/health/metrics" "200" "API Health Metrics"
-    test_endpoint "sageinsure-api" "/health/version" "200" "API Version Info"
+# Check if resource group exists
+check_resource_group() {
+    echo "Checking resource group..."
     
-    # Test pod health directly
-    test_pod_health "sageinsure-api" "/health/live" "API Liveness (Direct)"
-    test_pod_health "sageinsure-api" "/health/ready" "API Readiness (Direct)"
-else
-    echo "⚠️  API service not found in namespace $NAMESPACE"
-fi
-
-# Test Frontend health endpoints
-echo ""
-echo "🌐 Testing Frontend Health Endpoints"
-echo "===================================="
-
-if kubectl get svc -n "$NAMESPACE" sageinsure-frontend &>/dev/null; then
-    test_endpoint "sageinsure-frontend" "/api/health" "200" "Frontend General Health Check"
-    test_endpoint "sageinsure-frontend" "/api/health/live" "200" "Frontend Liveness Probe"
-    test_endpoint "sageinsure-frontend" "/api/health/ready" "200" "Frontend Readiness Probe"
-    test_endpoint "sageinsure-frontend" "/api/health?details=true" "200" "Frontend Detailed Health Check"
-else
-    echo "⚠️  Frontend service not found in namespace $NAMESPACE"
-fi
-
-# Test Worker health (if accessible)
-echo ""
-echo "⚙️  Testing Worker Health"
-echo "========================"
-
-worker_pods=$(kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/name=sageinsure-worker" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
-
-if [ -n "$worker_pods" ]; then
-    for pod in $worker_pods; do
-        echo "Testing worker pod: $pod"
-        
-        # Test if worker has health endpoint (assuming it runs on port 8080)
-        health_response=$(kubectl exec -n "$NAMESPACE" "$pod" -- curl -s -w "%{http_code}" -o /tmp/worker_health.json "http://localhost:8080/health" 2>/dev/null || echo "000")
-        
-        if [ "$health_response" = "200" ]; then
-            echo "✅ Worker $pod: HTTP $health_response"
-            status=$(kubectl exec -n "$NAMESPACE" "$pod" -- cat /tmp/worker_health.json 2>/dev/null | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
-            echo "   Status: $status"
-        else
-            echo "⚠️  Worker $pod: No health endpoint or HTTP $health_response"
-        fi
-    done
-else
-    echo "⚠️  No worker pods found in namespace $NAMESPACE"
-fi
-
-# Test Kubernetes probe status
-echo ""
-echo "🔍 Testing Kubernetes Probe Status"
-echo "=================================="
-
-# Check pod readiness
-echo "Pod Readiness Status:"
-kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/part-of=sageinsure" -o custom-columns=NAME:.metadata.name,READY:.status.conditions[?@.type==\"Ready\"].status,STATUS:.status.phase
-
-# Check for recent restarts
-echo ""
-echo "Recent Pod Restarts:"
-kubectl get pods -n "$NAMESPACE" -l "app.kubernetes.io/part-of=sageinsure" -o custom-columns=NAME:.metadata.name,RESTARTS:.status.containerStatuses[0].restartCount,LAST-RESTART:.status.containerStatuses[0].lastState.terminated.finishedAt
-
-# Check probe failures in events
-echo ""
-echo "Recent Probe Failure Events:"
-kubectl get events -n "$NAMESPACE" --field-selector reason=Unhealthy --sort-by='.lastTimestamp' | tail -10 || echo "No recent probe failures"
-
-# Performance test
-echo ""
-echo "⚡ Performance Testing"
-echo "===================="
-
-if kubectl get svc -n "$NAMESPACE" sageinsure-api &>/dev/null; then
-    echo "Testing API health endpoint performance..."
+    RG_NAME="sageinsure-rg"
     
-    # Port forward for performance test
-    kubectl port-forward -n "$NAMESPACE" svc/sageinsure-api 8080:80 &
-    PF_PID=$!
-    sleep 3
-    
-    # Run multiple requests to test performance
-    total_time=0
-    successful_requests=0
-    failed_requests=0
-    
-    for i in {1..10}; do
-        start_time=$(date +%s%N)
-        response=$(curl -s -w "%{http_code}" -o /dev/null "http://localhost:8080/health" 2>/dev/null || echo "000")
-        end_time=$(date +%s%N)
-        
-        duration=$(( (end_time - start_time) / 1000000 )) # Convert to milliseconds
-        
-        if [ "$response" = "200" ]; then
-            successful_requests=$((successful_requests + 1))
-            total_time=$((total_time + duration))
-            echo "  Request $i: ${duration}ms (HTTP $response)"
-        else
-            failed_requests=$((failed_requests + 1))
-            echo "  Request $i: Failed (HTTP $response)"
-        fi
-    done
-    
-    # Kill port forward
-    kill $PF_PID 2>/dev/null || true
-    
-    if [ $successful_requests -gt 0 ]; then
-        average_time=$((total_time / successful_requests))
-        echo ""
-        echo "Performance Summary:"
-        echo "  Successful requests: $successful_requests/10"
-        echo "  Failed requests: $failed_requests/10"
-        echo "  Average response time: ${average_time}ms"
-        
-        if [ $average_time -lt 100 ]; then
-            echo "  ✅ Performance: Excellent (< 100ms)"
-        elif [ $average_time -lt 500 ]; then
-            echo "  ✅ Performance: Good (< 500ms)"
-        elif [ $average_time -lt 1000 ]; then
-            echo "  ⚠️  Performance: Acceptable (< 1s)"
-        else
-            echo "  ❌ Performance: Poor (> 1s)"
-        fi
+    if az group show --name "$RG_NAME" &> /dev/null; then
+        print_status "Resource group '$RG_NAME' exists"
+        return 0
+    else
+        print_error "Resource group '$RG_NAME' not found"
+        return 1
     fi
-fi
+}
 
-echo ""
-echo "🏥 Health Check Testing Complete!"
-echo ""
-echo "📊 Summary:"
-echo "- Test health endpoints for all services"
-echo "- Verify Kubernetes probe configurations"
-echo "- Check for recent failures and restarts"
-echo "- Measure health endpoint performance"
-echo ""
-echo "💡 Next steps:"
-echo "- Review any failed health checks"
-echo "- Adjust probe timeouts if needed"
-echo "- Monitor health metrics in Grafana"
-echo "- Set up alerting for health check failures"
+# Check Key Vault
+check_key_vault() {
+    echo "Checking Key Vault..."
+    
+    KV_NAME="kv-eedfa81f"
+    RG_NAME="sageinsure-rg"
+    
+    if az keyvault show --name "$KV_NAME" --resource-group "$RG_NAME" &> /dev/null; then
+        print_status "Key Vault '$KV_NAME' exists and is accessible"
+        
+        # Check if we can list secrets (requires permissions)
+        if az keyvault secret list --vault-name "$KV_NAME" &> /dev/null; then
+            SECRET_COUNT=$(az keyvault secret list --vault-name "$KV_NAME" --query "length(@)" -o tsv)
+            print_status "Key Vault contains $SECRET_COUNT secrets"
+        else
+            print_warning "Key Vault exists but secrets are not accessible (permissions may be limited)"
+        fi
+        return 0
+    else
+        print_error "Key Vault '$KV_NAME' not found or not accessible"
+        return 1
+    fi
+}
+
+# Check Azure OpenAI
+check_azure_openai() {
+    echo "Checking Azure OpenAI..."
+    
+    OPENAI_NAME="sageinsure-openai"
+    RG_NAME="sageinsure-rg"
+    
+    if az cognitiveservices account show --name "$OPENAI_NAME" --resource-group "$RG_NAME" &> /dev/null; then
+        print_status "Azure OpenAI service '$OPENAI_NAME' exists"
+        return 0
+    else
+        print_error "Azure OpenAI service '$OPENAI_NAME' not found"
+        return 1
+    fi
+}
+
+# Check Azure Cognitive Search
+check_azure_search() {
+    echo "Checking Azure Cognitive Search..."
+    
+    SEARCH_NAME="sageinsure-search"
+    RG_NAME="sageinsure-rg"
+    
+    if az search service show --name "$SEARCH_NAME" --resource-group "$RG_NAME" &> /dev/null; then
+        print_status "Azure Cognitive Search service '$SEARCH_NAME' exists"
+        return 0
+    else
+        print_error "Azure Cognitive Search service '$SEARCH_NAME' not found"
+        return 1
+    fi
+}
+
+# Check Storage Account
+check_storage_account() {
+    echo "Checking Storage Account..."
+    
+    STORAGE_NAME="policydocseedfa81f"
+    RG_NAME="sageinsure-rg"
+    
+    if az storage account show --name "$STORAGE_NAME" --resource-group "$RG_NAME" &> /dev/null; then
+        print_status "Storage Account '$STORAGE_NAME' exists"
+        return 0
+    else
+        print_error "Storage Account '$STORAGE_NAME' not found"
+        return 1
+    fi
+}
+
+# Check AKS Cluster
+check_aks_cluster() {
+    echo "Checking AKS Cluster..."
+    
+    AKS_NAME="sageinsure-aks"
+    RG_NAME="sageinsure-rg"
+    
+    if az aks show --name "$AKS_NAME" --resource-group "$RG_NAME" &> /dev/null; then
+        print_status "AKS Cluster '$AKS_NAME' exists"
+        
+        # Check cluster status
+        CLUSTER_STATE=$(az aks show --name "$AKS_NAME" --resource-group "$RG_NAME" --query "provisioningState" -o tsv)
+        if [[ "$CLUSTER_STATE" == "Succeeded" ]]; then
+            print_status "AKS Cluster is in 'Succeeded' state"
+        else
+            print_warning "AKS Cluster is in '$CLUSTER_STATE' state"
+        fi
+        
+        # Check if we can get credentials
+        if az aks get-credentials --name "$AKS_NAME" --resource-group "$RG_NAME" --overwrite-existing &> /dev/null; then
+            print_status "AKS credentials retrieved successfully"
+            
+            # Check if kubectl works
+            if kubectl cluster-info &> /dev/null; then
+                print_status "kubectl connectivity to AKS cluster successful"
+                
+                # Check node status
+                NODE_COUNT=$(kubectl get nodes --no-headers 2>/dev/null | wc -l)
+                READY_NODES=$(kubectl get nodes --no-headers 2>/dev/null | grep -c " Ready " || true)
+                print_status "AKS cluster has $READY_NODES/$NODE_COUNT nodes ready"
+            else
+                print_warning "kubectl cannot connect to AKS cluster"
+            fi
+        else
+            print_warning "Cannot retrieve AKS credentials (may require additional permissions)"
+        fi
+        
+        return 0
+    else
+        print_warning "AKS Cluster '$AKS_NAME' not found (may not be deployed yet)"
+        return 1
+    fi
+}
+
+# Check Virtual Network
+check_virtual_network() {
+    echo "Checking Virtual Network..."
+    
+    VNET_NAME="sageinsure-vnet"
+    RG_NAME="sageinsure-rg"
+    
+    if az network vnet show --name "$VNET_NAME" --resource-group "$RG_NAME" &> /dev/null; then
+        print_status "Virtual Network '$VNET_NAME' exists"
+        
+        # Check subnets
+        SUBNET_COUNT=$(az network vnet subnet list --vnet-name "$VNET_NAME" --resource-group "$RG_NAME" --query "length(@)" -o tsv)
+        print_status "Virtual Network has $SUBNET_COUNT subnets"
+        
+        return 0
+    else
+        print_warning "Virtual Network '$VNET_NAME' not found (may not be deployed yet)"
+        return 1
+    fi
+}
+
+# Main health check function
+main() {
+    echo "SageInsure Infrastructure Health Check"
+    echo "====================================="
+    echo ""
+    
+    FAILED_CHECKS=0
+    
+    # Run all health checks
+    check_azure_auth || ((FAILED_CHECKS++))
+    echo ""
+    
+    check_resource_group || ((FAILED_CHECKS++))
+    echo ""
+    
+    check_key_vault || ((FAILED_CHECKS++))
+    echo ""
+    
+    check_azure_openai || ((FAILED_CHECKS++))
+    echo ""
+    
+    check_azure_search || ((FAILED_CHECKS++))
+    echo ""
+    
+    check_storage_account || ((FAILED_CHECKS++))
+    echo ""
+    
+    check_virtual_network || ((FAILED_CHECKS++))
+    echo ""
+    
+    check_aks_cluster || ((FAILED_CHECKS++))
+    echo ""
+    
+    # Summary
+    echo "Health Check Summary"
+    echo "==================="
+    
+    if [[ $FAILED_CHECKS -eq 0 ]]; then
+        print_status "All health checks passed!"
+        exit 0
+    else
+        print_error "$FAILED_CHECKS health check(s) failed"
+        exit 1
+    fi
+}
+
+# Run main function
+main

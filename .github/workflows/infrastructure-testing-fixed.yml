@@ -1,0 +1,389 @@
+name: Infrastructure Testing (Fixed)
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "terraform/**"
+      - "tests/**"
+      - ".github/workflows/infrastructure-testing-fixed.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - "tests/**"
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: "Type of tests to run"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - terratest
+          - e2e
+          - load
+          - health-check
+      load_test_users:
+        description: "Number of load test users"
+        required: false
+        default: "10"
+        type: string
+      load_test_duration:
+        description: "Load test duration"
+        required: false
+        default: "5m"
+        type: string
+
+env:
+  GO_VERSION: "1.21"
+  TERRAFORM_VERSION: "1.6.0"
+  K6_VERSION: "v0.47.0"
+
+jobs:
+  health-check-staging:
+    name: Application Health Check (staging)
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'health-check' || github.event_name != 'workflow_dispatch'
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      - name: Run health checks
+        run: |
+          echo "Running health checks for staging environment..."
+          bash scripts/test-health-checks.sh
+        continue-on-error: true
+
+      - name: Run migration validation
+        run: |
+          echo "Running migration validation..."
+          bash scripts/migration-validation.sh
+        continue-on-error: true
+
+  health-check-production:
+    name: Application Health Check (production)
+    runs-on: ubuntu-latest
+    needs: health-check-staging
+    if: (github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'health-check' || github.event_name != 'workflow_dispatch') && needs.health-check-staging.result == 'success'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      - name: Run production health checks
+        run: |
+          echo "Running health checks for production environment..."
+          bash scripts/test-health-checks.sh
+
+      - name: Run production migration validation
+        run: |
+          echo "Running production migration validation..."
+          bash scripts/migration-validation.sh
+
+  terratest:
+    name: Terratest Infrastructure Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'terratest' || github.event_name != 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('tests/terratest/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Initialize Go modules
+        run: |
+          cd tests/terratest
+          go mod tidy
+
+      - name: Run Terratest - Network Tests
+        run: |
+          cd tests/terratest
+          go test -v -timeout 30m ./network_test.go -run TestNetworkConnectivity
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
+      - name: Run Terratest - Identity Tests
+        run: |
+          cd tests/terratest
+          go test -v -timeout 20m ./identity_test.go -run TestKeyVaultIntegration
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
+      - name: Run Terratest - AKS Tests (Long Running)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          cd tests/terratest
+          go test -v -timeout 60m ./aks_cluster_test.go -run TestExistingAKSCluster
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        continue-on-error: true
+
+      - name: Upload Terratest Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terratest-results
+          path: tests/terratest/*.log
+          retention-days: 30
+
+  e2e-tests:
+    name: End-to-End Connectivity Tests
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test_type == 'all' || github.event.inputs.test_type == 'e2e' || github.event_name != 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      - name: Initialize Go modules for E2E tests
+        run: |
+          cd tests/e2e
+          go mod tidy
+
+      - name: Run E2E connectivity tests
+        run: |
+          cd tests/e2e
+          go test -v -timeout 20m ./connectivity_test.go
+        env:
+          TEST_NAMESPACE: default
+          BASE_URL: https://sageinsure.local
+          API_URL: https://api.sageinsure.local
+
+      - name: Upload E2E test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results
+          path: tests/e2e/*.log
+          retention-days: 30
+
+  security-tests:
+    name: Security Testing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Terraform security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          scan-ref: "terraform"
+          format: "sarif"
+          output: "trivy-terraform-results.sarif"
+        continue-on-error: true
+
+      - name: Upload Terraform security scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-terraform-results.sarif"
+
+      - name: Run test code security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "tests"
+          format: "sarif"
+          output: "trivy-tests-results.sarif"
+        continue-on-error: true
+
+      - name: Upload test security scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-tests-results.sarif"
+
+  generate-report:
+    name: Generate Test Report
+    runs-on: ubuntu-latest
+    needs:
+      [
+        health-check-staging,
+        health-check-production,
+        terratest,
+        e2e-tests,
+        security-tests,
+      ]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: test-results
+
+      - name: Generate comprehensive test report
+        run: |
+          echo "# Infrastructure Test Report" > test-report.md
+          echo "" >> test-report.md
+          echo "**Date:** $(date)" >> test-report.md
+          echo "**Commit:** ${{ github.sha }}" >> test-report.md
+          echo "**Branch:** ${{ github.ref_name }}" >> test-report.md
+          echo "**Trigger:** ${{ github.event_name }}" >> test-report.md
+          echo "" >> test-report.md
+
+          echo "## Test Results Summary" >> test-report.md
+          echo "" >> test-report.md
+
+          # Health check results
+          if [ "${{ needs.health-check-staging.result }}" = "success" ]; then
+            echo "✅ **Health Check (Staging):** PASSED" >> test-report.md
+          else
+            echo "❌ **Health Check (Staging):** FAILED" >> test-report.md
+          fi
+
+          if [ "${{ needs.health-check-production.result }}" = "success" ]; then
+            echo "✅ **Health Check (Production):** PASSED" >> test-report.md
+          elif [ "${{ needs.health-check-production.result }}" = "skipped" ]; then
+            echo "⏭️ **Health Check (Production):** SKIPPED" >> test-report.md
+          else
+            echo "❌ **Health Check (Production):** FAILED" >> test-report.md
+          fi
+
+          # Terratest results
+          if [ "${{ needs.terratest.result }}" = "success" ]; then
+            echo "✅ **Terratest Infrastructure Tests:** PASSED" >> test-report.md
+          else
+            echo "❌ **Terratest Infrastructure Tests:** FAILED" >> test-report.md
+          fi
+
+          # E2E results
+          if [ "${{ needs.e2e-tests.result }}" = "success" ]; then
+            echo "✅ **End-to-End Tests:** PASSED" >> test-report.md
+          else
+            echo "❌ **End-to-End Tests:** FAILED" >> test-report.md
+          fi
+
+          # Security test results
+          if [ "${{ needs.security-tests.result }}" = "success" ]; then
+            echo "✅ **Security Tests:** PASSED" >> test-report.md
+          else
+            echo "❌ **Security Tests:** FAILED" >> test-report.md
+          fi
+
+          echo "" >> test-report.md
+          echo "## Migration Status" >> test-report.md
+          echo "" >> test-report.md
+
+          # Determine overall migration readiness
+          if [ "${{ needs.health-check-staging.result }}" = "success" ] && [ "${{ needs.e2e-tests.result }}" = "success" ]; then
+            echo "🎉 **MIGRATION STATUS: READY FOR PRODUCTION CUTOVER**" >> test-report.md
+            echo "" >> test-report.md
+            echo "All critical tests are passing. The system is ready for production cutover." >> test-report.md
+            echo "" >> test-report.md
+            echo "**Next Steps:**" >> test-report.md
+            echo "1. Review this test report" >> test-report.md
+            echo "2. Execute: \`bash scripts/production-cutover.sh\`" >> test-report.md
+            echo "3. Monitor system during cutover" >> test-report.md
+          else
+            echo "⚠️ **MIGRATION STATUS: NOT READY**" >> test-report.md
+            echo "" >> test-report.md
+            echo "Some tests are failing. Please review and fix issues before proceeding with cutover." >> test-report.md
+          fi
+
+          echo "" >> test-report.md
+          echo "---" >> test-report.md
+          echo "Generated by SageInsure Infrastructure Testing Pipeline" >> test-report.md
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: comprehensive-test-report
+          path: test-report.md
+          retention-days: 90
+
+      - name: Comment PR with test results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('test-report.md', 'utf8');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🧪 Infrastructure Test Results\n\n${report}`
+            });

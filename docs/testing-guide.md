@@ -1,548 +1,458 @@
-# SageInsure Infrastructure Testing Guide
+# SageInsure AKS Migration Testing Guide
+
+This document provides comprehensive guidance for testing the SageInsure AKS Terraform migration infrastructure.
 
 ## Overview
 
-This guide covers the comprehensive testing framework for the SageInsure AKS infrastructure, including Terratest-based infrastructure tests, end-to-end connectivity tests, and load testing scenarios.
+The testing suite includes multiple types of tests to ensure the reliability and functionality of the AKS migration:
 
-## Testing Architecture
-
-The testing framework consists of three main components:
-
-1. **Infrastructure Tests (Terratest)**: Validate Terraform modules and Azure resources
-2. **End-to-End Tests**: Verify application connectivity and functionality
-3. **Load Tests**: Performance and scalability testing
-
-## Test Structure
-
-```
-tests/
-├── terratest/           # Infrastructure testing with Terratest
-│   ├── aks_cluster_test.go
-│   ├── network_test.go
-│   ├── identity_test.go
-│   └── go.mod
-├── e2e/                 # End-to-end connectivity tests
-│   └── connectivity_test.go
-├── load/                # Load testing scenarios
-│   ├── k6-load-test.js
-│   └── locust-load-test.py
-└── run-tests.sh         # Test automation script
-```
+- **Infrastructure Tests (Terratest)**: Validate Terraform modules and Azure resources
+- **End-to-End Tests**: Verify connectivity and application functionality
+- **Health Checks**: Monitor infrastructure component status
+- **Security Tests**: Validate security configurations and compliance
+- **Load Tests**: Ensure performance under load
 
 ## Prerequisites
 
 ### Required Tools
 
-1. **Go 1.21+**: For Terratest and E2E tests
-2. **Terraform 1.6+**: For infrastructure validation
-3. **kubectl**: For Kubernetes cluster interaction
-4. **Azure CLI**: For Azure resource management
-5. **K6** or **Locust**: For load testing
+- **Go 1.21+**: For running Terratest and E2E tests
+- **Terraform 1.6+**: For infrastructure validation
+- **Azure CLI**: For Azure resource management
+- **kubectl**: For Kubernetes cluster interaction
+- **Docker**: For container-based tests (optional)
 
-### Installation
+### Environment Setup
 
-#### Go and Dependencies
+1. **Azure Authentication**:
 
-```bash
-# Install Go (if not already installed)
-# Follow instructions at https://golang.org/doc/install
+   ```bash
+   # Service Principal authentication (recommended for CI/CD)
+   export ARM_CLIENT_ID="your-client-id"
+   export ARM_CLIENT_SECRET="your-client-secret"
+   export ARM_SUBSCRIPTION_ID="your-subscription-id"
+   export ARM_TENANT_ID="your-tenant-id"
 
-# Initialize test modules
-cd tests/terratest && go mod tidy
-cd ../e2e && go mod init sageinsure-e2e-tests && go mod tidy
-```
+   # Or use Azure CLI authentication
+   az login
+   ```
 
-#### K6 (for load testing)
+2. **Kubernetes Configuration**:
 
-```bash
-# Ubuntu/Debian
-sudo gpg -k
-sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-sudo apt-get update
-sudo apt-get install k6
+   ```bash
+   # Get AKS credentials
+   az aks get-credentials --resource-group sageinsure-rg --name sageinsure-aks
+   ```
 
-# macOS
-brew install k6
-```
+3. **Application Endpoints** (for E2E tests):
+   ```bash
+   export BASE_URL="https://sageinsure.local"
+   export API_URL="https://api.sageinsure.local"
+   ```
 
-#### Locust (alternative load testing)
+## Test Types
 
-```bash
-pip install locust
-```
+### 1. Infrastructure Tests (Terratest)
 
-## Running Tests
+These tests validate that Terraform modules deploy correctly and Azure resources are configured properly.
 
-### Quick Start
-
-Run all tests with default configuration:
+#### Running Infrastructure Tests
 
 ```bash
-./tests/run-tests.sh
+# Run all infrastructure tests
+./tests/run-tests.sh terratest
+
+# Run specific test modules
+cd tests/terratest
+go test -v -timeout 30m ./network_test.go
+go test -v -timeout 20m ./identity_test.go
+go test -v -timeout 60m ./aks_cluster_test.go
 ```
 
-### Selective Testing
+#### Test Coverage
 
-Run only infrastructure tests:
+- **Network Module**: Virtual networks, subnets, NSGs, route tables
+- **Identity Module**: Managed identities, RBAC assignments, federated credentials
+- **AKS Module**: Cluster deployment, node pools, system pods
+
+### 2. End-to-End Tests
+
+These tests verify connectivity and application functionality.
+
+#### Running E2E Tests
 
 ```bash
-./tests/run-tests.sh --terratest-only
-```
+# Run all E2E tests
+./tests/run-tests.sh e2e
 
-Run only end-to-end tests:
-
-```bash
-./tests/run-tests.sh --e2e-only
-```
-
-Run only load tests:
-
-```bash
-./tests/run-tests.sh --load-only --load-type k6 --users 50 --duration 10m
-```
-
-### Environment Variables
-
-Configure tests using environment variables:
-
-```bash
-# Test configuration
-export RUN_TERRATEST=true
-export RUN_E2E=true
-export RUN_LOAD=false
-
-# Load test configuration
-export LOAD_TEST_TYPE=k6        # or locust
-export LOAD_TEST_USERS=10
-export LOAD_TEST_DURATION=5m
-
-# Environment configuration
-export TEST_NAMESPACE=default
-export BASE_URL=https://sageinsure.local
-export API_URL=https://api.sageinsure.local
-
-# Azure configuration
-export ARM_CLIENT_ID=your-client-id
-export ARM_CLIENT_SECRET=your-client-secret
-export ARM_SUBSCRIPTION_ID=your-subscription-id
-export ARM_TENANT_ID=your-tenant-id
-```
-
-## Infrastructure Tests (Terratest)
-
-### AKS Cluster Tests
-
-Tests the complete AKS cluster deployment:
-
-```go
-func TestAKSClusterDeployment(t *testing.T) {
-    // Tests:
-    // - AKS cluster creation and health
-    // - Node pool configuration
-    // - Kubernetes API accessibility
-    // - System pods functionality
-    // - Network connectivity
-}
-```
-
-**What it validates:**
-
-- AKS cluster provisioning state
-- Node pool health and scaling
-- Kubernetes API server accessibility
-- System pods (CoreDNS, kube-proxy, Azure CNI)
-- Internal and external network connectivity
-
-### Network Tests
-
-Validates the network infrastructure:
-
-```go
-func TestNetworkInfrastructure(t *testing.T) {
-    // Tests:
-    // - Virtual Network creation
-    // - Subnet configuration
-    // - Network Security Groups
-    // - Route Tables
-    // - Private DNS Zones
-}
-```
-
-**What it validates:**
-
-- VNet and subnet creation
-- NSG rules and associations
-- Route table configuration
-- Private DNS zone setup
-- Network connectivity between subnets
-
-### Identity Tests
-
-Validates identity and access management:
-
-```go
-func TestIdentityModule(t *testing.T) {
-    // Tests:
-    // - Managed Identity creation
-    // - Federated Identity Credentials
-    // - RBAC role assignments
-    // - Key Vault integration
-}
-```
-
-**What it validates:**
-
-- User Assigned Managed Identities
-- Workload Identity federation
-- RBAC permissions
-- Key Vault access policies
-
-## End-to-End Tests
-
-### Connectivity Tests
-
-Validates application-level connectivity:
-
-```go
-func TestEndToEndConnectivity(t *testing.T) {
-    // Tests:
-    // - Pod health and readiness
-    // - Service accessibility
-    // - Ingress connectivity
-    // - Database connectivity
-    // - Azure services integration
-    // - Inter-service communication
-}
-```
-
-**Test Scenarios:**
-
-1. **Pod Health**: Verifies all application pods are running and ready
-2. **Service Discovery**: Tests Kubernetes service endpoints
-3. **Ingress Routing**: Validates external access through ingress
-4. **Database Connectivity**: Tests database connections from pods
-5. **Azure Services**: Validates connectivity to Azure OpenAI, Search, Key Vault
-6. **Inter-Service Communication**: Tests service-to-service communication
-
-### Running E2E Tests
-
-```bash
+# Run specific E2E tests
 cd tests/e2e
-go test -v -timeout 20m ./connectivity_test.go
+go test -v ./connectivity_test.go
 ```
 
-## Load Testing
+#### Test Coverage
 
-### K6 Load Tests
+- Internet connectivity
+- Azure service endpoints
+- Kubernetes cluster connectivity
+- Application health endpoints
 
-Comprehensive performance testing with K6:
+### 3. Health Checks
 
-```javascript
-export const options = {
-  stages: [
-    { duration: "2m", target: 10 }, // Ramp up
-    { duration: "5m", target: 10 }, // Steady state
-    { duration: "2m", target: 50 }, // Scale up
-    { duration: "10m", target: 50 }, // Sustained load
-    { duration: "5m", target: 0 }, // Ramp down
-  ],
-  thresholds: {
-    http_req_duration: ["p(95)<2000"], // 95% < 2s
-    http_req_failed: ["rate<0.05"], // Error rate < 5%
-  },
-};
-```
+Quick validation of infrastructure component status.
 
-**Test Scenarios:**
-
-- Homepage loading
-- API health checks
-- User authentication
-- Insurance quote generation
-- Document upload
-- Policy management
-
-### Running K6 Tests
+#### Running Health Checks
 
 ```bash
-cd tests/load
-k6 run --vus 50 --duration 10m k6-load-test.js
+# Run health checks
+./tests/run-tests.sh health
+
+# Or run directly
+bash scripts/test-health-checks.sh
 ```
 
-### Locust Load Tests
+#### Health Check Coverage
 
-Alternative load testing with Locust:
+- Azure CLI authentication
+- Resource group existence
+- Key Vault accessibility
+- Azure OpenAI service
+- Azure Cognitive Search
+- Storage Account
+- Virtual Network and subnets
+- AKS cluster status and connectivity
 
-```python
-class SageInsureUser(HttpUser):
-    wait_time = between(1, 3)
+### 4. Security Tests
 
-    @task(3)
-    def view_homepage(self):
-        # Test homepage loading
+Validate security configurations and compliance.
 
-    @task(5)
-    def check_api_health(self):
-        # Test API health endpoint
+#### Running Security Tests
 
-    @task(4)
-    def generate_quote(self):
-        # Test quote generation
-```
-
-### Running Locust Tests
+Security tests are integrated into the CI/CD pipeline using Trivy:
 
 ```bash
-cd tests/load
+# Scan Terraform configurations
+trivy config terraform/
 
-# Web UI mode
+# Scan container images
+trivy image your-registry/sageinsure-api:latest
+```
+
+### 5. Load Tests
+
+Performance testing using k6 and Locust.
+
+#### Running Load Tests
+
+```bash
+# K6 load tests
+cd tests/load
+k6 run --vus 10 --duration 5m k6-load-test.js
+
+# Locust load tests
 locust -f locust-load-test.py --host=https://api.sageinsure.local
-
-# Headless mode
-locust -f locust-load-test.py --host=https://api.sageinsure.local --headless -u 50 -r 5 -t 300s
 ```
 
 ## CI/CD Integration
 
-### GitHub Actions Workflow
+### GitHub Actions
 
-The testing framework integrates with GitHub Actions for automated testing:
+The project includes comprehensive GitHub Actions workflows:
 
-```yaml
-name: Infrastructure Testing
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: "0 2 * * *" # Daily at 2 AM
-```
+- **Infrastructure Testing**: `.github/workflows/infrastructure-testing.yml`
+- **Integration Testing**: `.github/workflows/integration-testing.yml`
 
-**Workflow Jobs:**
+#### Triggering Tests
 
-1. **Terratest**: Infrastructure validation
-2. **E2E Tests**: Connectivity validation
-3. **Load Tests**: Performance validation
-4. **Security Tests**: Security scanning
-5. **Report Generation**: Comprehensive reporting
+Tests run automatically on:
 
-### Manual Triggers
+- Push to `main` or `develop` branches
+- Pull requests to `main`
+- Daily scheduled runs (2 AM UTC)
+- Manual workflow dispatch
 
-Trigger tests manually with custom parameters:
+#### Manual Trigger
 
 ```bash
-# Via GitHub CLI
-gh workflow run infrastructure-testing.yml \
-  -f test_type=load \
-  -f load_test_users=100 \
-  -f load_test_duration=15m
+# Trigger via GitHub CLI
+gh workflow run infrastructure-testing.yml
+
+# Or use the GitHub web interface
 ```
 
 ## Test Configuration
 
-### Test Data
+### Terratest Configuration
 
-Configure test data for different scenarios:
+Terratest tests use the following configuration:
 
-```javascript
-// K6 test data
-const testUsers = [
-  { email: "test1@example.com", password: "testpass123" },
-  { email: "test2@example.com", password: "testpass123" },
-];
-
-const insuranceQuotes = [
-  { type: "auto", vehicle: { make: "Toyota", model: "Camry" } },
-  { type: "home", property: { type: "house", value: 300000 } },
-];
+```go
+terraformOptions := &terraform.Options{
+    TerraformDir: "../../terraform/modules/network",
+    Vars: map[string]interface{}{
+        "resource_group_name": resourceGroupName,
+        "location":           "East US",
+        "environment":        "test",
+    },
+    EnvVars: map[string]string{
+        "ARM_SUBSCRIPTION_ID": subscriptionID,
+    },
+}
 ```
 
-### Environment-Specific Configuration
+### Test Timeouts
 
-Configure tests for different environments:
-
-```bash
-# Development
-export BASE_URL=https://dev.sageinsure.local
-export API_URL=https://api-dev.sageinsure.local
-export TEST_NAMESPACE=development
-
-# Staging
-export BASE_URL=https://staging.sageinsure.local
-export API_URL=https://api-staging.sageinsure.local
-export TEST_NAMESPACE=staging
-
-# Production
-export BASE_URL=https://sageinsure.local
-export API_URL=https://api.sageinsure.local
-export TEST_NAMESPACE=default
-```
-
-## Test Results and Reporting
-
-### Automated Reports
-
-Tests generate comprehensive reports:
-
-```markdown
-# Infrastructure Test Report
-
-**Date:** 2024-01-15 10:30:00
-**Environment:** production
-**Status:** ✅ PASSED
-
-## Test Results
-
-- ✅ Terratest Infrastructure Tests: PASSED
-- ✅ End-to-End Tests: PASSED
-- ✅ Load Tests: COMPLETED
-- ✅ Security Tests: PASSED
-
-## Performance Metrics
-
-- Average Response Time: 245ms
-- 95th Percentile: 1.2s
-- Error Rate: 0.02%
-- Throughput: 150 req/s
-```
-
-### Artifacts
-
-Test artifacts are preserved for analysis:
-
-- Test logs and results
-- Performance metrics (JSON, CSV)
-- HTML reports (Locust)
-- Security scan results (SARIF)
+- Network tests: 30 minutes
+- Identity tests: 20 minutes
+- AKS cluster tests: 60 minutes
+- E2E tests: 20 minutes
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Authentication Failures**
+#### 1. Authentication Failures
 
-   ```bash
-   # Verify Azure credentials
-   az account show
+**Problem**: Tests fail with authentication errors.
 
-   # Check Kubernetes access
-   kubectl cluster-info
-   ```
+**Solution**:
 
-2. **Network Connectivity Issues**
+```bash
+# Verify Azure CLI authentication
+az account show
 
-   ```bash
-   # Test cluster connectivity
-   kubectl get nodes
-   kubectl get pods --all-namespaces
+# Check environment variables
+echo $ARM_SUBSCRIPTION_ID
+echo $ARM_CLIENT_ID
 
-   # Test ingress
-   curl -I https://api.sageinsure.local/health
-   ```
+# Re-authenticate if needed
+az login
+```
 
-3. **Load Test Failures**
+#### 2. Terraform State Issues
 
-   ```bash
-   # Check application health
-   kubectl get pods -n default
-   kubectl logs -l app.kubernetes.io/name=sageinsure-api
+**Problem**: Terraform state conflicts or corruption.
 
-   # Verify resource limits
-   kubectl describe nodes
-   ```
+**Solution**:
+
+```bash
+# Check state lock
+terraform force-unlock <lock-id>
+
+# Refresh state
+terraform refresh
+
+# Import existing resources if needed
+terraform import azurerm_resource_group.main /subscriptions/.../resourceGroups/...
+```
+
+#### 3. Kubernetes Connectivity Issues
+
+**Problem**: kubectl cannot connect to AKS cluster.
+
+**Solution**:
+
+```bash
+# Get fresh credentials
+az aks get-credentials --resource-group sageinsure-rg --name sageinsure-aks --overwrite-existing
+
+# Verify cluster access
+kubectl cluster-info
+
+# Check cluster status
+az aks show --resource-group sageinsure-rg --name sageinsure-aks --query provisioningState
+```
+
+#### 4. Test Timeout Issues
+
+**Problem**: Tests timeout during resource creation.
+
+**Solution**:
+
+- Increase timeout values in test configuration
+- Use smaller resource configurations for testing
+- Run tests in regions with better performance
 
 ### Debug Mode
 
-Enable debug logging for detailed troubleshooting:
+Enable debug logging for detailed test output:
 
 ```bash
 # Terratest debug
 export TF_LOG=DEBUG
-export TERRATEST_LOG_LEVEL=DEBUG
+go test -v ./network_test.go
 
-# Go test verbose output
-go test -v -timeout 30m ./...
-
-# K6 debug
-k6 run --http-debug k6-load-test.js
+# Azure CLI debug
+export AZURE_CLI_DEBUG=1
+az group show --name sageinsure-rg
 ```
+
+## Test Data Management
+
+### Test Resource Naming
+
+Tests use unique identifiers to avoid conflicts:
+
+```go
+uniqueID := random.UniqueId()
+resourceGroupName := fmt.Sprintf("test-network-rg-%s", uniqueID)
+```
+
+### Cleanup
+
+Tests automatically clean up resources using `defer` statements:
+
+```go
+defer terraform.Destroy(t, terraformOptions)
+```
+
+For manual cleanup:
+
+```bash
+# List test resource groups
+az group list --query "[?contains(name, 'test-')].name" -o table
+
+# Delete test resources
+az group delete --name test-network-rg-abc123 --yes --no-wait
+```
+
+## Performance Considerations
+
+### Test Parallelization
+
+Tests use `t.Parallel()` to run concurrently:
+
+```go
+func TestNetworkInfrastructure(t *testing.T) {
+    t.Parallel()
+    // Test implementation
+}
+```
+
+### Resource Optimization
+
+For faster test execution:
+
+- Use minimal resource configurations
+- Leverage existing resources where possible
+- Run tests in parallel when safe
+
+## Monitoring and Reporting
+
+### Test Results
+
+Test results are automatically uploaded as artifacts:
+
+- Terratest logs
+- E2E test reports
+- Load test results
+- Security scan reports
+
+### Notifications
+
+Failed tests trigger:
+
+- GitHub issue creation (for scheduled runs)
+- Pull request comments
+- Slack notifications (if configured)
 
 ## Best Practices
 
-### Test Organization
+### Writing Tests
 
-1. **Isolation**: Each test should be independent and idempotent
-2. **Cleanup**: Always clean up resources after tests
-3. **Timeouts**: Set appropriate timeouts for long-running operations
-4. **Retries**: Implement retry logic for flaky operations
+1. **Use descriptive test names**: `TestNetworkInfrastructure`, `TestAKSClusterDeployment`
+2. **Include cleanup**: Always use `defer terraform.Destroy()`
+3. **Handle errors gracefully**: Use `require.NoError()` and `assert.True()`
+4. **Add logging**: Use `t.Logf()` for debugging information
+5. **Test isolation**: Ensure tests don't depend on each other
 
-### Performance Testing
+### Test Maintenance
 
-1. **Baseline**: Establish performance baselines
-2. **Gradual Load**: Ramp up load gradually
-3. **Monitoring**: Monitor system resources during tests
-4. **Thresholds**: Set realistic performance thresholds
+1. **Regular updates**: Keep test dependencies up to date
+2. **Review failures**: Investigate and fix flaky tests
+3. **Documentation**: Update this guide when adding new tests
+4. **Monitoring**: Track test execution times and success rates
 
-### Security Testing
+## Security Considerations
 
-1. **Secrets**: Never commit secrets in test code
-2. **Permissions**: Use least-privilege access
-3. **Scanning**: Regular security scans of test code
-4. **Compliance**: Ensure tests meet compliance requirements
+### Secrets Management
 
-## Extending the Framework
+- Never commit secrets to version control
+- Use environment variables for sensitive data
+- Leverage Azure Key Vault for production secrets
+- Rotate test credentials regularly
 
-### Adding New Tests
+### Access Control
 
-1. **Infrastructure Tests**: Add new Terratest files in `tests/terratest/`
-2. **E2E Tests**: Extend `connectivity_test.go` with new scenarios
-3. **Load Tests**: Add new test scenarios to K6 or Locust scripts
+- Use least-privilege service principals for CI/CD
+- Limit test resource access to necessary permissions
+- Monitor test resource usage and costs
 
-### Custom Metrics
+## Cost Management
 
-Add custom metrics for business-specific testing:
+### Resource Optimization
 
-```javascript
-// K6 custom metrics
-import { Counter, Rate, Trend } from "k6/metrics";
+- Use B-series VMs for testing
+- Delete test resources promptly
+- Monitor Azure costs for test subscriptions
+- Use Azure Dev/Test pricing where available
 
-const businessMetrics = {
-  quotesGenerated: new Counter("quotes_generated"),
-  processingTime: new Trend("quote_processing_time"),
-  successRate: new Rate("quote_success_rate"),
-};
-```
+### Budget Alerts
 
-### Integration with Monitoring
-
-Integrate test results with monitoring systems:
+Set up budget alerts for test subscriptions:
 
 ```bash
-# Send metrics to Prometheus
-curl -X POST http://prometheus-pushgateway:9091/metrics/job/load-tests \
-  -d "test_duration_seconds $(date +%s)"
-
-# Send alerts to Slack
-curl -X POST $SLACK_WEBHOOK_URL \
-  -d '{"text": "Load test completed: 150 req/s, 0.02% error rate"}'
+az consumption budget create \
+  --budget-name "test-budget" \
+  --amount 100 \
+  --time-grain Monthly \
+  --start-date 2024-01-01 \
+  --end-date 2024-12-31
 ```
 
-## Maintenance
+## Support and Troubleshooting
 
-### Regular Tasks
+For issues with the testing infrastructure:
 
-1. **Update Dependencies**: Keep Go modules and tools updated
-2. **Review Thresholds**: Adjust performance thresholds based on trends
-3. **Clean Test Data**: Remove old test artifacts and logs
-4. **Update Test Scenarios**: Keep test scenarios current with application changes
+1. Check this documentation first
+2. Review GitHub Actions logs
+3. Check Azure resource status
+4. Contact the DevOps team
+5. Create an issue in the project repository
 
-### Monitoring Test Health
+## Appendix
 
-1. **Test Success Rates**: Monitor test pass/fail rates over time
-2. **Execution Time**: Track test execution duration trends
-3. **Resource Usage**: Monitor test resource consumption
-4. **Flaky Tests**: Identify and fix unstable tests
+### Useful Commands
 
-This comprehensive testing framework ensures the reliability, performance, and security of the SageInsure AKS infrastructure throughout its lifecycle.
+```bash
+# Quick health check
+bash scripts/test-health-checks.sh
+
+# Run specific test type
+./tests/run-tests.sh terratest
+
+# Check AKS cluster status
+kubectl get nodes
+kubectl get pods --all-namespaces
+
+# View Terraform state
+terraform show
+terraform state list
+
+# Azure resource queries
+az resource list --resource-group sageinsure-rg --output table
+```
+
+### Environment Variables Reference
+
+| Variable              | Description                       | Required        |
+| --------------------- | --------------------------------- | --------------- |
+| `ARM_CLIENT_ID`       | Azure service principal client ID | Yes (for CI/CD) |
+| `ARM_CLIENT_SECRET`   | Azure service principal secret    | Yes (for CI/CD) |
+| `ARM_SUBSCRIPTION_ID` | Azure subscription ID             | Yes             |
+| `ARM_TENANT_ID`       | Azure tenant ID                   | Yes (for CI/CD) |
+| `KUBECONFIG`          | Kubernetes config file path       | No              |
+| `BASE_URL`            | Frontend application URL          | No              |
+| `API_URL`             | API application URL               | No              |
+| `TF_LOG`              | Terraform log level               | No              |
+| `AZURE_CLI_DEBUG`     | Azure CLI debug mode              | No              |

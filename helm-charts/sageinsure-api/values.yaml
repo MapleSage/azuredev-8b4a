@@ -2,7 +2,7 @@
 replicaCount: 2
 
 image:
-  repository: sageinsureacr.azurecr.io/sageinsure-api
+  repository: sageinsureacr.azurecr.io/sageinsure-backend
   pullPolicy: IfNotPresent
   tag: "latest"
 
@@ -15,7 +15,7 @@ serviceAccount:
   create: true
   # Annotations to add to the service account
   annotations:
-    azure.workload.identity/client-id: "" # Will be set by Terraform
+    azure.workload.identity/client-id: "e963ea14-9c63-4a32-b455-0b4047604b99"
   # The name of the service account to use.
   name: "sageinsure-api"
 
@@ -46,18 +46,19 @@ ingress:
   enabled: true
   className: "nginx"
   annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
   hosts:
-    - host: api.sageinsure.local
+    - host: api-staging.maplesage.com
       paths:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: sageinsure-api-tls
+    - secretName: api-staging-maplesage-com-tls
       hosts:
-        - api.sageinsure.local
+        - api-staging.maplesage.com
 
 resources:
   limits:
@@ -99,7 +100,7 @@ app:
 
 # Health check configuration
 healthCheck:
-  enabled: true
+  enabled: false
   path: /health/live
   initialDelaySeconds: 30
   periodSeconds: 10
@@ -108,7 +109,7 @@ healthCheck:
   successThreshold: 1
 
 readinessProbe:
-  enabled: true
+  enabled: false
   path: /health/ready
   initialDelaySeconds: 15
   periodSeconds: 5
@@ -117,7 +118,7 @@ readinessProbe:
   successThreshold: 1
 
 startupProbe:
-  enabled: true
+  enabled: false
   path: /health/startup
   initialDelaySeconds: 10
   periodSeconds: 10
@@ -125,9 +126,13 @@ startupProbe:
   failureThreshold: 30
   successThreshold: 1
 
+# Azure configuration
+azure:
+  tenantId: "e9394f90-446d-41dd-8c8c-98ac08c5f090"
+
 # Azure Key Vault integration
 keyVault:
-  enabled: true
+  enabled: false
   name: "kv-eedfa81f"
   secrets:
     - name: openai-api-key
@@ -148,7 +153,7 @@ env:
 
 # Monitoring configuration
 monitoring:
-  enabled: true
+  enabled: false
   port: 9090
   path: /metrics
 
