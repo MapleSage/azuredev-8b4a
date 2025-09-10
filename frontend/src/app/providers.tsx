@@ -1,26 +1,33 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { MsalProvider } from "@azure/msal-react";
 import { msalInstance } from "../msal/msalConfig";
-import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  const [isClient, setIsClient] = useState(false);
+function ProvidersComponent({ children }: { children: React.ReactNode }) {
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
+    const initializeMsal = async () => {
+      if (!msalInstance) {
+        setIsInitialized(true);
+        return;
+      }
+
+      try {
+        // Handle redirect response if present
+        await msalInstance.handleRedirectPromise();
+        setIsInitialized(true);
+      } catch (error) {
+        console.error("MSAL initialization error:", error);
+        setIsInitialized(true);
+      }
+    };
+
+    initializeMsal();
   }, []);
 
-  // Show loading during hydration
-  if (!isClient) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div>Loading...</div>
-      </div>
-    );
-  }
-
-  // If MSAL instance failed to initialize, show error
   if (!msalInstance) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -31,5 +38,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (!isInitialized) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div>Processing authentication...</div>
+      </div>
+    );
+  }
+
   return <MsalProvider instance={msalInstance}>{children}</MsalProvider>;
 }
+
+export const Providers = dynamic(() => Promise.resolve(ProvidersComponent), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-screen">
+      <div>Loading...</div>
+    </div>
+  ),
+});
