@@ -18,7 +18,16 @@ const nextConfig: NextConfig = {
         util: require.resolve('util'),
         url: require.resolve('url'),
         assert: require.resolve('assert'),
+        process: require.resolve('process/browser'),
       };
+      
+      const webpack = require('webpack');
+      config.plugins.push(
+        new webpack.ProvidePlugin({
+          Buffer: ['buffer', 'Buffer'],
+          process: 'process/browser',
+        })
+      );
     }
     return config;
   },

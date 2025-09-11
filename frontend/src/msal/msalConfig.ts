@@ -53,8 +53,5 @@ export const b2cPolicies = {
   },
 };
 
-// Only create MSAL instance on client side
-export const msalInstance =
-  typeof window !== "undefined" && typeof window.crypto !== "undefined"
-    ? new PublicClientApplication(msalConfig)
-    : null;
+// MSAL instance will be created at runtime
+export let msalInstance: PublicClientApplication | null = null;

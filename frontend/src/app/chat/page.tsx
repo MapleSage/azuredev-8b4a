@@ -32,8 +32,7 @@ interface Conversation {
   lastActivity: string;
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_APP_URL || "http://localhost:8000";
+const API_BASE_URL = "http://localhost:8000";
 
 function LoginPage() {
   const { instance } = useMsal();
@@ -41,6 +40,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   const handleB2CLogin = async () => {
     try {
@@ -91,8 +91,30 @@ function LoginPage() {
   };
 
   const handleDemoLogin = () => {
-    setEmail("demo@sageinsure.com");
-    setPassword("demo123");
+    setIsDemoMode(true);
+    localStorage.setItem('demoUser', JSON.stringify({
+      name: 'Demo User',
+      email: 'demo@sageinsure.com',
+      id: 'demo-user-123'
+    }));
+    window.location.reload();
+  };
+
+  const handleRegularLogin = async () => {
+    if (email === "demo@sageinsure.com" && password === "demo123") {
+      handleDemoLogin();
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      setError("");
+      await instance.loginRedirect(loginRequest);
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      setError("Login failed. Please try again.");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -134,8 +156,12 @@ function LoginPage() {
               />
             </div>
 
-            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-              Sign In
+            <Button 
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handleRegularLogin}
+              disabled={isLoading}
+            >
+              {isLoading ? "Signing in..." : "Sign In"}
             </Button>
 
             <p className="text-center text-sm text-gray-400">
@@ -235,12 +261,21 @@ export default function ChatPage() {
   const { instance, accounts } = useMsal();
   const firstAccount = accounts[0] ?? null;
   const account = useAccount(firstAccount);
+  const [demoUser, setDemoUser] = useState<any>(null);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<
     string | null
   >(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Check for demo user
+  useEffect(() => {
+    const storedDemoUser = localStorage.getItem('demoUser');
+    if (storedDemoUser) {
+      setDemoUser(JSON.parse(storedDemoUser));
+    }
+  }, []);
 
   // Handle redirect response
   useEffect(() => {
@@ -279,7 +314,7 @@ export default function ChatPage() {
 
   const handleSendMessage = useCallback(
     async (message: string, files?: File[]) => {
-      if (!selectedConversation || !account) return;
+      if (!selectedConversation || (!account && !demoUser)) return;
 
       const userMessage: Message = {
         id: `user-${Date.now()}`,
@@ -307,11 +342,18 @@ export default function ChatPage() {
       setIsLoading(true);
 
       try {
-        const tokenResponse = await instance.acquireTokenSilent({
-          scopes: ["User.Read"],
-          account,
-        });
-        const accessToken = tokenResponse.accessToken;
+        let headers: any = {
+          "Content-Type": "application/json",
+        };
+
+        // Only add auth token for real MSAL users, not demo users
+        if (account && !demoUser) {
+          const tokenResponse = await instance.acquireTokenSilent({
+            scopes: ["User.Read"],
+            account,
+          });
+          headers.Authorization = `Bearer ${tokenResponse.accessToken}`;
+        }
 
         // ✅ derive conversation inside callback to avoid stale state
         const currentConversation = conversations.find(
@@ -326,10 +368,7 @@ export default function ChatPage() {
 
         const res = await fetch(`${API_BASE_URL}/chat`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers,
           body: JSON.stringify({ message, conversation_history }),
         });
 
@@ -389,6 +428,53 @@ export default function ChatPage() {
     },
     [selectedConversation, account, instance, conversations]
   );
+
+  // Demo logout handler
+  const handleDemoLogout = () => {
+    localStorage.removeItem('demoUser');
+    setDemoUser(null);
+  };
+
+  // If demo user is logged in, show chat interface
+  if (demoUser) {
+    return (
+      <div className="h-screen flex bg-background">
+        <div className="w-80 flex-shrink-0">
+          <div className="p-4 border-b">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Demo Mode</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleDemoLogout}
+              >
+                Logout
+              </Button>
+            </div>
+            <p className="text-sm font-medium">{demoUser.name}</p>
+          </div>
+          <ChatSidebar
+            conversations={conversations}
+            selectedConversation={selectedConversation}
+            onSelectConversation={handleSelectConversation}
+            onNewChat={handleNewChat}
+          />
+        </div>
+        <div className="flex-1 flex flex-col">
+          <ChatArea
+            conversation={
+              conversations.find((c) => c.id === selectedConversation) || null
+            }
+            isLoading={isLoading}
+          />
+          <MessageInput
+            onSendMessage={handleSendMessage}
+            disabled={isLoading}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
