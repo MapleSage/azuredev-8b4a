@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sageinsure-workbench
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azure-workbench-secrets
+  namespace: sageinsure-workbench
+type: Opaque
+data:
+  openai-key: R0ZVV2hIOWxtZHRvNkdMclZpV0wzM215M1ZQNExwYlh2MlJuVjV2ckxac2k4UTZwT0pRUUo5OUJHQUNZZUJqRlhKM3czQUFBQkFDT0duejZn
+  search-key: cHdMREdxc0M2UVF4aFBKTVlScms5eDBTMXpnOWpYZ1dwSVJINmJPVjV2QXpTZUEwNEtjYw==
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: underwriters-workbench
+  namespace: sageinsure-workbench
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: underwriters-workbench
+  template:
+    metadata:
+      labels:
+        app: underwriters-workbench
+    spec:
+      imagePullSecrets:
+      - name: acr-secret
+      containers:
+      - name: workbench
+        image: sageinsureacr.azurecr.io/underwriters-workbench:latest
+        ports:
+        - containerPort: 8501
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          value: "https://sageinsure-openai.openai.azure.com/"
+        - name: AZURE_SEARCH_ENDPOINT
+          value: "https://sageinsure-search.search.windows.net/"
+        - name: AZURE_STORAGE_ACCOUNT
+          value: "policydocseedfa81f"
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-workbench-secrets
+              key: openai-key
+        - name: AZURE_SEARCH_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-workbench-secrets
+              key: search-key
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: underwriters-workbench-service
+  namespace: sageinsure-workbench
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8501
+    protocol: TCP
+  selector:
+    app: underwriters-workbench
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: underwriters-workbench-ingress
+  namespace: sageinsure-workbench
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: workbench.sageinsure.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: underwriters-workbench-service
+            port:
+              number: 80

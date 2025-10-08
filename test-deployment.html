@@ -1,0 +1,175 @@
+<!doctype html>
+<html>
+  <head>
+    <title>SageInsure - Deployed on AKS</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 40px;
+        background: #f5f5f5;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      .header {
+        text-align: center;
+        color: #0066cc;
+        margin-bottom: 30px;
+      }
+      .status {
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 5px;
+      }
+      .success {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+      }
+      .info {
+        background: #d1ecf1;
+        border: 1px solid #bee5eb;
+        color: #0c5460;
+      }
+      .chat-box {
+        margin: 20px 0;
+        padding: 20px;
+        background: #f8f9fa;
+        border-radius: 5px;
+      }
+      input,
+      button {
+        padding: 10px;
+        margin: 5px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+      }
+      button {
+        background: #0066cc;
+        color: white;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0052a3;
+      }
+      .response {
+        margin-top: 15px;
+        padding: 15px;
+        background: white;
+        border-left: 4px solid #0066cc;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🏢 SageInsure AI Assistant</h1>
+        <h2>Successfully Deployed on Azure AKS!</h2>
+      </div>
+
+      <div class="status success">
+        ✅ <strong>Backend API:</strong> Running on AKS at
+        <code>http://135.171.176.69:8000</code>
+      </div>
+
+      <div class="status success">
+        ✅ <strong>Frontend:</strong> Available at
+        <code>http://172.188.207.173:3000</code>
+      </div>
+
+      <div class="status info">
+        ℹ️ <strong>Authentication:</strong> MSAL enabled with Azure AD
+        integration
+      </div>
+
+      <div class="chat-box">
+        <h3>Test the AI Assistant</h3>
+        <input
+          type="text"
+          id="messageInput"
+          placeholder="Ask about insurance..."
+          style="width: 60%" />
+        <button onclick="sendMessage()">Send Message</button>
+        <div id="response" class="response" style="display: none"></div>
+      </div>
+
+      <div class="status info">
+        <h3>🎉 Deployment Complete!</h3>
+        <p><strong>What's been deployed:</strong></p>
+        <ul>
+          <li>✅ AKS Cluster with 2 nodes</li>
+          <li>✅ Backend API with MSAL authentication</li>
+          <li>✅ Azure OpenAI integration (GPT-4o)</li>
+          <li>✅ Load balancer services</li>
+          <li>✅ Azure AD app registration updated</li>
+        </ul>
+
+        <p><strong>Access URLs:</strong></p>
+        <ul>
+          <li>
+            Backend API:
+            <a href="http://135.171.176.69:8000" target="_blank"
+              >http://135.171.176.69:8000</a
+            >
+          </li>
+          <li>
+            Frontend App:
+            <a href="http://172.188.207.173:3000" target="_blank"
+              >http://172.188.207.173:3000</a
+            >
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <script>
+      async function sendMessage() {
+        const input = document.getElementById("messageInput");
+        const responseDiv = document.getElementById("response");
+        const message = input.value.trim();
+
+        if (!message) return;
+
+        responseDiv.style.display = "block";
+        responseDiv.innerHTML = "⏳ Sending message to AI...";
+
+        try {
+          const response = await fetch("http://135.171.176.69:8000/chat", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: message,
+              specialist: "GENERAL",
+            }),
+          });
+
+          const data = await response.json();
+          responseDiv.innerHTML = `
+                    <strong>🤖 AI Response:</strong><br>
+                    ${data.response}<br><br>
+                    <small>Agent: ${data.agent} | Status: ${data.status} | Confidence: ${data.confidence}</small>
+                `;
+          input.value = "";
+        } catch (error) {
+          responseDiv.innerHTML = `❌ Error: ${error.message}`;
+        }
+      }
+
+      // Allow Enter key to send message
+      document
+        .getElementById("messageInput")
+        .addEventListener("keypress", function (e) {
+          if (e.key === "Enter") {
+            sendMessage();
+          }
+        });
+    </script>
+  </body>
+</html>

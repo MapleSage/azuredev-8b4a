@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# Upload frontend content to Azure Static Web App
+echo "📤 Uploading AzIns frontend..."
+
+# Create simple frontend
+mkdir -p frontend-content
+cat > frontend-content/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AzIns - Azure Insurance Platform</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .header { background: #0078d4; color: white; padding: 20px; border-radius: 8px; }
+        .content { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; }
+        .agent-card { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .status { background: #d4edda; color: #155724; padding: 5px 10px; border-radius: 12px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ AzIns - Azure Insurance Platform</h1>
+        <p>Complete insurance platform with Azure Agent Core runtime</p>
+    </div>
+    
+    <div class="content">
+        <h2>Platform Components</h2>
+        
+        <div class="agent-card">
+            <h3>Policy Agent</h3>
+            <span class="status">Live</span>
+            <p>Azure Agent Core with KB, Memory, RAG capabilities</p>
+            <a href="https://sageinsure-agent.greenforest-00f97c58.eastus.azurecontainerapps.io" target="_blank">Open Agent →</a>
+        </div>
+        
+        <div class="agent-card">
+            <h3>Functions Backend</h3>
+            <span class="status">Ready</span>
+            <p>Azure Functions for serverless processing</p>
+            <a href="https://azins-functions.azurewebsites.net" target="_blank">View Functions →</a>
+        </div>
+        
+        <div class="agent-card">
+            <h3>Storage & Data</h3>
+            <span class="status">Active</span>
+            <p>Azure Storage with migrated knowledge bases</p>
+            <small>34+ insurance documents migrated from AWS</small>
+        </div>
+    </div>
+    
+    <div class="content">
+        <h2>Quick Links</h2>
+        <ul>
+            <li><a href="https://sageinsure-agent.greenforest-00f97c58.eastus.azurecontainerapps.io">Policy Agent Chat</a></li>
+            <li><a href="https://azins-functions.azurewebsites.net">Backend Functions</a></li>
+            <li><a href="https://portal.azure.com">Azure Portal</a></li>
+        </ul>
+    </div>
+</body>
+</html>
+EOF
+
+# Get deployment token
+TOKEN=$(az staticwebapp secrets list --name azins-frontend --resource-group azins-rg --query properties.apiKey -o tsv)
+
+echo "✅ Frontend created!"
+echo "🔗 Upload via: https://portal.azure.com → Static Web Apps → azins-frontend → Overview → 'Browse source code'"
+echo "📁 Or use GitHub Actions with token: $TOKEN"

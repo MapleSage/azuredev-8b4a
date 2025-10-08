@@ -1,0 +1,157 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sageinsure-agentcore-config
+  namespace: staging
+data:
+  AZURE_SEARCH_ENDPOINT: "https://sageinsure-search.search.windows.net"
+  AZURE_OPENAI_ENDPOINT: "https://eastus.api.cognitive.microsoft.com/"
+  AZURE_STORAGE_ACCOUNT_NAME: "policydocseedfa81f"
+  AZURE_OPENAI_DEPLOYMENT: "gpt4o-deployment"
+  AZURE_SEARCH_INDEX: "policy-index"
+  CORS_ORIGINS: "http://localhost:3000,http://localhost:3001,https://sageinsure.maplesage.com,https://api-sageinsure.maplesage.com"
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sageinsure-agentcore
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: sageinsure-agentcore
+    app.kubernetes.io/instance: sageinsure-agentcore
+    app.kubernetes.io/version: "2.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinsure-agentcore
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sageinsure-agentcore
+        app.kubernetes.io/instance: sageinsure-agentcore
+      annotations:
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: sageinsure-api
+      containers:
+      - name: sageinsure-agentcore
+        image: sageagentcoreacr.azurecr.io/sageinsure-agentcore:v1
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: PORT
+          value: "8000"
+        - name: AZURE_OPENAI_API_KEY
+          value: "172068a0b5a348efa948c8339cca0329"
+        - name: AZURE_SEARCH_API_KEY
+          value: "DYvM0ODN7nEkVxoBy7KtHsCKYcxH6DtUvfg3fQzlO8AzSeBsKgjX"
+        envFrom:
+        - configMapRef:
+            name: sageinsure-agentcore-config
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1
+            memory: 1Gi
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sageinsure-agentcore
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: sageinsure-agentcore
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app.kubernetes.io/name: sageinsure-agentcore
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sageinsure-agentcore
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: sageinsure-agentcore
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - api-sageinsure.maplesage.com
+    secretName: api-sageinsure-maplesage-com-tls
+  rules:
+  - host: api-sageinsure.maplesage.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sageinsure-agentcore
+            port:
+              number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sageinsure-agentcore
+  namespace: staging
+  labels:
+    app.kubernetes.io/name: sageinsure-agentcore
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sageinsure-agentcore
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

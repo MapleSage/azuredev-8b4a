@@ -1,0 +1,9 @@
+azure-functions
+azure-identity
+azure-storage-blob
+azure-ai-formrecognizer
+azure-cosmos
+openai
+requests
+python-dotenv
+PyPDF2

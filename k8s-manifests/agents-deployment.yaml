@@ -1,0 +1,459 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sageinsure-agents
+---
+# Claims Manager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claims-manager
+  namespace: sageinsure-agents
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: claims-manager
+  template:
+    metadata:
+      labels:
+        app: claims-manager
+    spec:
+      containers:
+      - name: claims-manager
+        image: sageins# Claims Manager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claims-manager
+  namespace: sageinsure-agents
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: claims-manager
+  template:
+    metadata:
+      labels:
+        app: claims-manager
+    spec:
+      containers:
+      - name: claims-manager
+        image: sageins# Claims Manager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claims-manager
+  namespace: sageinsure-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: claims-manager
+  template:
+    metadata:
+      labels:
+        app: claims-manager
+    spec:
+      containers:
+      - name: claims-manager
+        image: sageinsureacr1758906383.azurecr.io/claims-manager:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: endpoint
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: key
+        - name: AZURE_SEARCH_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-search-secret
+              key: endpoint
+        - name: AZURE_SEARCH_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-search-secret
+              key: key
+        - name: MCP_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: agent-config
+              key: models.json
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: claims-manager-service
+  namespace: sageinsure-agents
+spec:
+  selector:
+    app: claims-manager
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+# Marine Specialist Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marine-specialist
+  namespace: sageinsure-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: marine-specialist
+  template:
+    metadata:
+      labels:
+        app: marine-specialist
+    spec:
+      containers:
+      - name: marine-specialist
+        image: sageinsureacr1758906383.azurecr.io/marine-specialist:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: endpoint
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: key
+        - name: MCP_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: agent-config
+              key: models.json
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marine-specialist-service
+  namespace: sageinsure-agents
+spec:
+  selector:
+    app: marine-specialist
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+# Underwriter Agent Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: underwriter-agent
+  namespace: sageinsure-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: underwriter-agent
+  template:
+    metadata:
+      labels:
+        app: underwriter-agent
+    spec:
+      containers:
+      - name: underwriter-agent
+        image: sageinsureacr1758906383.azurecr.io/underwriter-agent:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: endpoint
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: key
+        - name: MCP_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: agent-config
+              key: models.json
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: underwriter-agent-service
+  namespace: sageinsure-agents
+spec:
+  selector:
+    app: underwriter-agent
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+# Research Assistant Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: research-assistant
+  namespace: sageinsure-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: research-assistant
+  template:
+    metadata:
+      labels:
+        app: research-assistant
+    spec:
+      containers:
+      - name: research-assistant
+        image: sageinsureacr1758906383.azurecr.io/research-assistant:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: endpoint
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: key
+        - name: MCP_SERVERS
+          value: "arxiv,pubmed,clinicaltrial,chembl,tavily"
+        - name: MCP_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: agent-config
+              key: models.json
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: research-assistant-service
+  namespace: sageinsure-agents
+spec:
+  selector:
+    app: research-assistant
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+# Cyber Insurance Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cyber-insurance
+  namespace: sageinsure-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cyber-insurance
+  template:
+    metadata:
+      labels:
+        app: cyber-insurance
+    spec:
+      containers:
+      - name: cyber-insurance
+        image: sageinsureacr1758906383.azurecr.io/cyber-insurance:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: endpoint
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: key
+        - name: MCP_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: agent-config
+              key: models.json
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cyber-insurance-service
+  namespace: sageinsure-agents
+spec:
+  selector:
+    app: cyber-insurance
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+# FNOL Processor Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fnol-processor
+  namespace: sageinsure-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fnol-processor
+  template:
+    metadata:
+      labels:
+        app: fnol-processor
+    spec:
+      containers:
+      - name: fnol-processor
+        image: sageinsureacr1758906383.azurecr.io/fnol-processor:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: endpoint
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: key
+        - name: MCP_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: agent-config
+              key: models.json
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fnol-processor-service
+  namespace: sageinsure-agents
+spec:
+  selector:
+    app: fnol-processor
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+---
+# Policy Assistant Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-assistant
+  namespace: sageinsure-agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: policy-assistant
+  template:
+    metadata:
+      labels:
+        app: policy-assistant
+    spec:
+      containers:
+      - name: policy-assistant
+        image: sageinsureacr1758906383.azurecr.io/policy-assistant:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AZURE_OPENAI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: endpoint
+        - name: AZURE_OPENAI_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-openai-secret
+              key: key
+        - name: MCP_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: agent-config
+              key: models.json
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: policy-assistant-service
+  namespace: sageinsure-agents
+spec:
+  selector:
+    app: policy-assistant
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP

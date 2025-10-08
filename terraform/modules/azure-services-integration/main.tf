@@ -22,27 +22,27 @@ resource "azurerm_private_endpoint" "keyvault" {
   tags = var.tags
 }
 
-# Private Endpoint for Azure OpenAI - Commented out due to CustomSubDomainName requirement
-# resource "azurerm_private_endpoint" "openai" {
-#   name                = "pe-openai-aks"
-#   location            = var.location
-#   resource_group_name = var.resource_group_name
-#   subnet_id           = var.private_endpoint_subnet_id
+# Private Endpoint for Azure OpenAI
+resource "azurerm_private_endpoint" "openai" {
+  name                = "pe-openai-aks"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  subnet_id           = var.private_endpoint_subnet_id
 
-#   private_service_connection {
-#     name                           = "psc-openai"
-#     private_connection_resource_id = var.openai_account_id
-#     subresource_names              = ["account"]
-#     is_manual_connection           = false
-#   }
+  private_service_connection {
+    name                           = "psc-openai"
+    private_connection_resource_id = var.openai_account_id
+    subresource_names              = ["account"]
+    is_manual_connection           = false
+  }
 
-#   private_dns_zone_group {
-#     name                 = "pdz-group-openai"
-#     private_dns_zone_ids = ["/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.Network/privateDnsZones/${var.private_dns_zones.openai}"]
-#   }
+  private_dns_zone_group {
+    name                 = "pdz-group-openai"
+    private_dns_zone_ids = ["/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.Network/privateDnsZones/${var.private_dns_zones.openai}"]
+  }
 
-#   tags = var.tags
-# }
+  tags = var.tags
+}
 
 # Private Endpoint for Cognitive Search
 resource "azurerm_private_endpoint" "search" {

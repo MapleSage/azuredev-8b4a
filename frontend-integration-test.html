@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SageInsure - Azure AgentCore Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .chat { border: 1px solid #ddd; height: 400px; overflow-y: auto; padding: 10px; margin: 10px 0; }
+        .message { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .user { background: #007bff; color: white; text-align: right; }
+        .assistant { background: #f8f9fa; }
+        input, button { padding: 10px; margin: 5px; }
+        input { width: 70%; }
+        button { width: 20%; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ SageInsure - Azure AgentCore Integration</h1>
+    
+    <div id="status" class="status info">Testing connection to Azure AgentCore...</div>
+    
+    <div>
+        <strong>Frontend URL:</strong> <span id="frontend-url">Loading...</span><br>
+        <strong>AgentCore API:</strong> <span id="api-url">https://sageinsure-agent.greenforest-00f97c58.eastus.azurecontainerapps.io</span><br>
+        <strong>Session ID:</strong> <span id="session-id">Loading...</span>
+    </div>
+    
+    <div class="chat" id="chat"></div>
+    
+    <div>
+        <input type="text" id="message" placeholder="Ask about insurance policies..." />
+        <button onclick="sendMessage()">Send</button>
+        <button onclick="testConnection()">Test API</button>
+    </div>
+
+    <script>
+        const AGENTCORE_ENDPOINT = "https://sageinsure-agent.greenforest-00f97c58.eastus.azurecontainerapps.io";
+        const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        document.getElementById('frontend-url').textContent = window.location.href;
+        document.getElementById('session-id').textContent = sessionId.slice(-12);
+        
+        function addMessage(role, content) {
+            const chat = document.getElementById('chat');
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.innerHTML = `<strong>${role.toUpperCase()}:</strong> ${content}`;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+        
+        async function testConnection() {
+            try {
+                document.getElementById('status').className = 'status info';
+                document.getElementById('status').textContent = 'Testing Azure AgentCore connection...';
+                
+                const response = await fetch(`${AGENTCORE_ENDPOINT}/`);
+                const data = await response.json();
+                
+                document.getElementById('status').className = 'status success';
+                document.getElementById('status').textContent = `✅ Connected to Azure AgentCore v${data.version || '1.0'}`;
+                
+                addMessage('system', `Connected to Azure AgentCore v${data.version || '1.0'}`);
+                
+            } catch (error) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').textContent = `❌ Connection failed: ${error.message}`;
+                
+                addMessage('system', `Connection failed: ${error.message}`);
+            }
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('message');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            addMessage('user', message);
+            input.value = '';
+            
+            try {
+                addMessage('system', 'Azure AgentCore is processing...');
+                
+                const response = await fetch(`${AGENTCORE_ENDPOINT}/invocations`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: message,
+                        session_id: sessionId
+                    })
+                });
+                
+                // Remove processing message
+                const chat = document.getElementById('chat');
+                chat.removeChild(chat.lastChild);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                addMessage('assistant', data.result || 'No response received');
+                
+            } catch (error) {
+                // Remove processing message
+                const chat = document.getElementById('chat');
+                if (chat.lastChild && chat.lastChild.textContent.includes('processing')) {
+                    chat.removeChild(chat.lastChild);
+                }
+                
+                addMessage('assistant', `Error: ${error.message}`);
+            }
+        }
+        
+        // Auto-test connection on load
+        window.onload = () => {
+            testConnection();
+            addMessage('system', 'SageInsure Azure AgentCore Integration Test Ready');
+            
+            // Enter key support
+            document.getElementById('message').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+        };
+    </script>
+</body>
+</html>

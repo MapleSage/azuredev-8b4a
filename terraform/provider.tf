@@ -53,7 +53,7 @@ provider "helm" {
       args = [
         "aks",
         "get-credentials",
-        "--resource-group", data.azurerm_resource_group.existing.name,
+        "--resource-group", azurerm_resource_group.rg.name,
         "--name", module.aks.cluster_name,
         "--format", "exec"
       ]
@@ -72,7 +72,7 @@ provider "kubernetes" {
     args = [
       "aks",
       "get-credentials",
-      "--resource-group", data.azurerm_resource_group.existing.name,
+      "--resource-group", azurerm_resource_group.rg.name,
       "--name", module.aks.cluster_name,
       "--format", "exec"
     ]

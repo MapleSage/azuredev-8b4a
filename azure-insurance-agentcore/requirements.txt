@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+openai
+azure-search-documents
+azure-cosmos
+azure-core
+azure-identity

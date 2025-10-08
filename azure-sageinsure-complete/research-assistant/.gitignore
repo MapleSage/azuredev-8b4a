@@ -1,0 +1,15 @@
+*__pycache__*
+*.py[cod]
+*$py.class
+*_test_*
+venv*
+.chembl*
+*.csv
+*.ipynb
+*Report.txt
+*reports/*
+.env
+.DS_Store
+csr_results.txt
+.venv
+.kiro

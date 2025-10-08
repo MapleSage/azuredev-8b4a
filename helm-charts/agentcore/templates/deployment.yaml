@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sageinsure-agentcore.fullname" . }}
+  labels:
+    {{- include "sageinsure-agentcore.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "sageinsure-agentcore.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sageinsure-agentcore.selectorLabels" . | nindent 8 }}
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: {{ include "sageinsure-agentcore.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agentcore
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: AZURE_CLIENT_ID
+              value: "{{ .Values.workloadIdentity.clientId }}"
+            - name: AZURE_OPENAI_ENDPOINT
+              value: "{{ .Values.env.AZURE_OPENAI_ENDPOINT }}"
+            - name: AZURE_SEARCH_ENDPOINT
+              value: "{{ .Values.env.AZURE_SEARCH_ENDPOINT }}"
+            - name: AZURE_SEARCH_INDEX
+              value: "{{ .Values.env.AZURE_SEARCH_INDEX }}"
+            - name: AZURE_OPENAI_DEPLOYMENT
+              value: "{{ .Values.env.AZURE_OPENAI_DEPLOYMENT }}"
+            - name: KB1_PATH
+              value: "/app/{{ .Values.knowledgeBases.kb1 }}"
+            - name: KB2_PATH
+              value: "/app/{{ .Values.knowledgeBases.kb2 }}"
+            - name: KB3_PATH
+              value: "/app/{{ .Values.knowledgeBases.kb3 }}"
+            - name: KB4_PATH
+              value: "/app/{{ .Values.knowledgeBases.kb4 }}"
+            - name: KB5_PATH
+              value: "/app/{{ .Values.knowledgeBases.kb5 }}"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

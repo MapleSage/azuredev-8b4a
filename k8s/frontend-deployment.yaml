@@ -1,0 +1,206 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sageinsure-frontend
+  namespace: sageinsure
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sageinsure-frontend
+  template:
+    metadata:
+      labels:
+        app: sageinsure-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: node:18-alpine
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: NEXT_PUBLIC_AZURE_CLIENT_ID
+              value: "27650c1d-91fa-4747-a2fa-1a52813ac5ac"
+            - name: NEXT_PUBLIC_AZURE_TENANT_ID
+              value: "e9394f90-446d-41dd-8c8c-98ac08c5f090"
+            - name: NEXT_PUBLIC_REDIRECT_URI
+              value: "http://localhost:3000/auth/callback"
+            - name: NEXT_PUBLIC_API_URL
+              value: "http://sageinsure-backend-service:8000"
+            - name: NEXT_PUBLIC_DEVELOPMENT_MODE
+              value: "false"
+          command: ["/bin/sh"]
+          args:
+            - -c
+            - |
+              apk add --no-cache git curl
+              git clone https://github.com/your-repo/azure-insurance.git /app || echo "Using embedded app"
+              cd /app/frontend || cd /
+
+              # Create a simple Next.js app with MSAL
+              npm init -y
+              npm install next@latest react@latest react-dom@latest @azure/msal-browser@latest @azure/msal-react@latest axios@latest
+
+              mkdir -p pages components lib
+
+              cat > pages/_app.js << 'EOF'
+              import { AuthProvider } from '../lib/auth-context'
+
+              export default function App({ Component, pageProps }) {
+                return (
+                  <AuthProvider>
+                    <Component {...pageProps} />
+                  </AuthProvider>
+                )
+              }
+              EOF
+
+              cat > pages/index.js << 'EOF'
+              import { useState } from 'react'
+              import { useAuth } from '../lib/auth-context'
+
+              export default function Home() {
+                const { isAuthenticated, user, signIn, signOut } = useAuth()
+                const [message, setMessage] = useState('')
+                const [response, setResponse] = useState('')
+                
+                const sendMessage = async () => {
+                  try {
+                    const res = await fetch(process.env.NEXT_PUBLIC_API_URL + '/chat', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ text: message, specialist: 'GENERAL' })
+                    })
+                    const data = await res.json()
+                    setResponse(data.response)
+                  } catch (error) {
+                    setResponse('Error connecting to AI service')
+                  }
+                }
+                
+                return (
+                  <div style={{ padding: '20px', fontFamily: 'Arial' }}>
+                    <h1>🏢 SageInsure AI Assistant</h1>
+                    
+                    {!isAuthenticated ? (
+                      <div>
+                        <p>Please sign in to access the AI assistant</p>
+                        <button onClick={signIn} style={{ padding: '10px 20px', backgroundColor: '#0066cc', color: 'white', border: 'none', borderRadius: '5px' }}>
+                          Sign in with Microsoft
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <p>Welcome, {user?.name || 'User'}!</p>
+                        <button onClick={signOut} style={{ padding: '5px 10px', marginBottom: '20px' }}>Sign Out</button>
+                        
+                        <div>
+                          <h2>Chat with AI Assistant</h2>
+                          <input 
+                            type="text" 
+                            value={message} 
+                            onChange={(e) => setMessage(e.target.value)}
+                            placeholder="Ask about insurance..."
+                            style={{ width: '300px', padding: '10px', marginRight: '10px' }}
+                          />
+                          <button onClick={sendMessage} style={{ padding: '10px 20px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px' }}>
+                            Send
+                          </button>
+                          
+                          {response && (
+                            <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '5px' }}>
+                              <strong>AI Response:</strong>
+                              <p>{response}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              EOF
+
+              cat > lib/auth-context.js << 'EOF'
+              import { createContext, useContext, useState, useEffect } from 'react'
+              import { PublicClientApplication } from '@azure/msal-browser'
+              import { MsalProvider, useMsal, useIsAuthenticated, useAccount } from '@azure/msal-react'
+
+              const msalConfig = {
+                auth: {
+                  clientId: process.env.NEXT_PUBLIC_AZURE_CLIENT_ID,
+                  authority: `https://login.microsoftonline.com/${process.env.NEXT_PUBLIC_AZURE_TENANT_ID}`,
+                  redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI
+                }
+              }
+
+              const msalInstance = new PublicClientApplication(msalConfig)
+
+              const AuthContext = createContext()
+
+              function AuthProviderInner({ children }) {
+                const { instance } = useMsal()
+                const isAuthenticated = useIsAuthenticated()
+                const account = useAccount()
+                
+                const signIn = () => {
+                  instance.loginPopup({ scopes: ['openid', 'profile', 'User.Read'] })
+                }
+                
+                const signOut = () => {
+                  instance.logoutPopup()
+                }
+                
+                return (
+                  <AuthContext.Provider value={{ isAuthenticated, user: account, signIn, signOut }}>
+                    {children}
+                  </AuthContext.Provider>
+                )
+              }
+
+              export function AuthProvider({ children }) {
+                return (
+                  <MsalProvider instance={msalInstance}>
+                    <AuthProviderInner>{children}</AuthProviderInner>
+                  </MsalProvider>
+                )
+              }
+
+              export const useAuth = () => useContext(AuthContext)
+              EOF
+
+              cat > package.json << 'EOF'
+              {
+                "name": "sageinsure-frontend",
+                "scripts": {
+                  "dev": "next dev",
+                  "build": "next build",
+                  "start": "next start"
+                }
+              }
+              EOF
+
+              npm run build
+              npm start
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sageinsure-frontend-service
+  namespace: sageinsure
+spec:
+  selector:
+    app: sageinsure-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: LoadBalancer

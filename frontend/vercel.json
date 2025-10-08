@@ -1,0 +1,18 @@
+{
+  "env": {
+    "NEXT_PUBLIC_AZURE_CLIENT_ID": "27650c1d-91fa-4747-a2fa-1a52813ac5ac",
+    "NEXT_PUBLIC_AZURE_TENANT_ID": "e9394f90-446d-41dd-8c8c-98ac08c5f090",
+    "NEXT_PUBLIC_REDIRECT_URI": "https://frontend-maplesage-s-projects.vercel.app/auth/callback",
+    "NEXT_PUBLIC_API_URL": "http://135.171.176.69:8000",
+    "NEXT_PUBLIC_DEVELOPMENT_MODE": "false"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_AZURE_CLIENT_ID": "27650c1d-91fa-4747-a2fa-1a52813ac5ac",
+      "NEXT_PUBLIC_AZURE_TENANT_ID": "e9394f90-446d-41dd-8c8c-98ac08c5f090",
+      "NEXT_PUBLIC_REDIRECT_URI": "https://frontend-maplesage-s-projects.vercel.app/auth/callback",
+      "NEXT_PUBLIC_API_URL": "http://135.171.176.69:8000",
+      "NEXT_PUBLIC_DEVELOPMENT_MODE": "false"
+    }
+  }
+}

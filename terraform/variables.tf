@@ -62,3 +62,15 @@ variable "api_runtime_stack" {
   type        = string
   default     = "PYTHON|3.11"
 }
+# AKS Integration
+variable "enable_aks_integration" {
+  description = "Enable AKS workload identity integration"
+  type        = bool
+  default     = true
+}
+
+variable "aks_workload_identity_principal_id" {
+  description = "Principal ID of the AKS workload identity"
+  type        = string
+  default     = ""
+}

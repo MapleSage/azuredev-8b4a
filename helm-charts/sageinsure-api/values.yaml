@@ -100,8 +100,8 @@ app:
 
 # Health check configuration
 healthCheck:
-  enabled: false
-  path: /health/live
+  enabled: true
+  path: /healthz
   initialDelaySeconds: 30
   periodSeconds: 10
   timeoutSeconds: 5
@@ -109,8 +109,8 @@ healthCheck:
   successThreshold: 1
 
 readinessProbe:
-  enabled: false
-  path: /health/ready
+  enabled: true
+  path: /healthz
   initialDelaySeconds: 15
   periodSeconds: 5
   timeoutSeconds: 3
@@ -118,8 +118,8 @@ readinessProbe:
   successThreshold: 1
 
 startupProbe:
-  enabled: false
-  path: /health/startup
+  enabled: true
+  path: /healthz
   initialDelaySeconds: 10
   periodSeconds: 10
   timeoutSeconds: 5
@@ -132,15 +132,18 @@ azure:
 
 # Azure Key Vault integration
 keyVault:
-  enabled: false
+  enabled: true
   name: "kv-eedfa81f"
   secrets:
     - name: openai-api-key
-      key: OPENAI-API-KEY
-      envVar: OPENAI_API_KEY
+      key: AZURE-OPENAI-API-KEY
+      envVar: AZURE_OPENAI_API_KEY
     - name: search-api-key
-      key: SEARCH-API-KEY
-      envVar: AZURE_SEARCH_API_KEY
+      key: AZURE-SEARCH-API-KEY
+      envVar: AZURE_SEARCH_KEY
+    - name: storage-account-key
+      key: AZURE-STORAGE-ACCOUNT-KEY
+      envVar: STORAGE_ACCOUNT_KEY
 
 # Environment variables
 env:

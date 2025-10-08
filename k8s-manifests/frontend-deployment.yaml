@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sageinsure-frontend
+  namespace: sageinsure-agents
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sageinsure-frontend
+  template:
+    metadata:
+      labels:
+        app: sageinsure-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: sageinsureacr1758906383.azurecr.io/sageinsure-frontend:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_API_BASE_URL
+          value: "https://agents.maplesage.com"
+        - name: NEXT_PUBLIC_BACKEND_URL
+          value: "https://agents.maplesage.com"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sageinsure-frontend-service
+  namespace: sageinsure-agents
+spec:
+  selector:
+    app: sageinsure-frontend
+  ports:
+  - port: 80
+    targetPort: 3000
+  type: ClusterIP

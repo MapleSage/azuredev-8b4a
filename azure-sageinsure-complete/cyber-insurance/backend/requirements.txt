@@ -1,0 +1,10 @@
+azure-functions
+azure-identity
+azure-mgmt-security
+azure-mgmt-resource
+azure-cosmos
+azure-storage-blob
+azure-servicebus
+openai
+requests
+python-dotenv

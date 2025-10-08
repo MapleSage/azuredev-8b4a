@@ -1,0 +1,36 @@
+<step title="BackgroundTrace" date="2025-08-25T17:56:44.030" instance="984be3" url="/api/zipdeploy" method="POST" >
+  <step title="Cleanup Xml Logs" date="2025-08-25T17:56:44.044" /><!-- duration: 8ms -->
+  <step title="Creating temporary deployment - FetchDeploymentManager" date="2025-08-25T17:56:44.156" /><!-- duration: 3ms -->
+  <step title="Creating temporary deployment" date="2025-08-25T17:56:44.166" /><!-- duration: 96ms -->
+  <step title="Performing fetch based deployment" date="2025-08-25T17:56:44.303" >
+    <step title="Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/a393d323-c903-4955-aad0-d19ee4bdc530.zip (24.06 MB) to /tmp/zipdeploy/extracted" date="2025-08-25T17:56:45.665" >
+      <step title="ChmodRecursive Process exited with total time taken in ms: 413" date="2025-08-25T17:56:53.665" /><!-- duration: 9ms -->
+    </step><!-- duration: 8016ms -->
+    <step title="Deployment timer started" date="2025-08-25T17:56:55.703" >
+      <step title="DeploymentManager.Deploy(id:5b9c8f35-f4bc-4a78-a208-57bde2389761)" date="2025-08-25T17:56:55.710" >
+        <step title="Collecting changeset information" date="2025-08-25T17:56:55.764" /><!-- duration: 132ms -->
+        <step title="Updating submodules" date="2025-08-25T17:56:55.912" /><!-- duration: 1165ms -->
+        <step title="Determining deployment builder" date="2025-08-25T17:56:57.386" >
+          <step title="Builder is OryxBuilder" date="2025-08-25T17:56:57.410" /><!-- duration: 3ms -->
+        </step><!-- duration: 31ms -->
+        <step title="PreDeployment: context.CleanOutputPath False" date="2025-08-25T17:56:57.476" >
+          <step title="PreDeployment: context.OutputPath /home/site/wwwroot" date="2025-08-25T17:56:57.610" >
+            <step title="Building" date="2025-08-25T17:56:57.787" >
+              <step title="Executing external process" date="2025-08-25T17:56:58.546" type="process" path="bash" arguments="-c &quot;oryx build /tmp/zipdeploy/extracted -o /home/site/wwwroot --platform python --platform-version 3.11 -p virtualenv_name=antenv --log-file /tmp/build-debug.log  -i /tmp/8dde400c8ab9891 --compress-destination-dir | tee /tmp/oryx-build.log ; exit $PIPESTATUS &quot;" >
+                <step title="Cpu: python(2097,38.700s)+ts(2098,0.140s)+build.sh(2096,0.000s)+build.sh(2095,0.000s)+build.sh(1994,0.060s)+oryx(1974,4.640s)+tee(1975,0.010s)+bash(1973,0.010s)=total(43.550s)" date="2025-08-25T17:59:09.893" /><!-- duration: 40ms -->
+                <step title="bash: no io activity for 60s, prev-cpu=-1.000s, current-cpu=43.550s" date="2025-08-25T17:59:09.951" /><!-- duration: 39ms -->
+              </step><!-- duration: 210478ms -->
+              <step title="Using PythonDeploymentLogParser" date="2025-08-25T18:00:29.534" /><!-- duration: 7ms -->
+              <step title="Triggering recycle (preview mode disabled)." date="2025-08-25T18:00:30.897" /><!-- duration: 14ms -->
+              <step title="Modified file to trigger a restart of the app container." date="2025-08-25T18:00:30.979" /><!-- duration: 10ms -->
+              <step title="Skip function trigger and logicapp sync because function is not enabled." date="2025-08-25T18:00:31.036" /><!-- duration: 21ms -->
+            </step><!-- duration: 214404ms -->
+          </step><!-- duration: 214586ms -->
+          <step title="Cleaning up temp files" date="2025-08-25T18:00:32.200" /><!-- duration: 7596ms -->
+          <step title="Cleaning up temp files" date="2025-08-25T18:00:39.802" /><!-- duration: 517ms -->
+          <step title="Reloading status file with latest updates" date="2025-08-25T18:00:40.374" >
+            <step title="WebHooksManager.PublishEventAsync: PostDeployment" date="2025-08-25T18:00:40.378" /><!-- duration: 111ms -->
+          </step><!-- duration: 124ms -->
+          <step title="Cleaning up temporary deployment - fetch deployment was successful" date="2025-08-25T18:00:40.518" /><!-- duration: 4ms -->
+        </step><!-- duration: 223108ms -->
+      </step><!-- duration: 224895ms -->

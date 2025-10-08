@@ -1,0 +1,48 @@
+image:
+  repository: sageinsureacreedfa81f.azurecr.io/sageinsure-agentcore
+  tag: latest
+  pullPolicy: Always
+
+replicas: 3
+
+service:
+  type: ClusterIP
+  port: 8000
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: agentcore.sageinsure.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+
+env:
+  AZURE_OPENAI_ENDPOINT: "https://sageinsure-openai.openai.azure.com/"
+  AZURE_SEARCH_ENDPOINT: "https://sageinsure-search.search.windows.net"
+  AZURE_SEARCH_INDEX: "policy-index"
+  AZURE_OPENAI_DEPLOYMENT: "gpt4o-deployment"
+
+serviceAccount:
+  create: true
+  name: ""
+  automount: true
+
+workloadIdentity:
+  clientId: ""
+
+knowledgeBases:
+  kb1: "kb1-customer-policy"
+  kb2: "kb2-underwriting-docs" 
+  kb3: "kb3-fsi-docs"
+  kb4: "kb4-claims-docs"
+  kb5: "kb5-research-docs"

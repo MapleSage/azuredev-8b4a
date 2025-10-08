@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-proxy
+  namespace: sageinsure-agents
+spec:
+  type: ExternalName
+  externalName: sageinsure-backend.livelyforest-2e320588.eastus2.azurecontainerapps.io
+  ports:
+  - port: 80
+    targetPort: 80

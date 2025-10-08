@@ -17,7 +17,10 @@ from azure.storage.blob import BlobServiceClient
 load_dotenv()
 
 # Logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # FastAPI app
@@ -111,26 +114,36 @@ async def search_policies(query: str, top_k: int = 5):
         logger.warning("Azure Search not configured; returning no context")
         return []
     try:
+        logger.info(f"Creating search client for query: {query}")
         search_client = get_search_client()
+        
+        logger.info("Executing search query...")
         results = search_client.search(
             search_text=query,
             select=["id", "title", "content", "category", "effectiveDate"],
             top=top_k,
-            query_type="semantic",
-            query_language="en-us"
+            query_type="simple",  # Changed from semantic to simple
+            # query_language="en-us"  # Removed this line
         )
+        
         documents = []
         for result in results:
+            logger.info(f"Processing search result: {result.get('id', 'unknown')}")
             documents.append({
-                "id": result["id"],
-                "title": result["title"],
-                "content": result["content"][:500] + "..." if len(result["content"]) > 500 else result["content"],
-                "category": result["category"],
-                "effectiveDate": result["effectiveDate"]
+                "id": result.get("id", "unknown"),
+                "title": result.get("title", "Untitled"),
+                "content": result.get("content", "")[:500] + "..." if len(result.get("content", "")) > 500 else result.get("content", ""),
+                "category": result.get("category", "General"),
+                "effectiveDate": result.get("effectiveDate", "Unknown")
             })
+        
+        logger.info(f"Search completed successfully. Found {len(documents)} documents")
         return documents
+        
     except Exception as e:
-        logger.error(f"Search error: {e}")
+        logger.error(f"Search error: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"Search traceback: {traceback.format_exc()}")
         return []
 
 async def generate_response(query: str, context_docs: List[dict], conversation_history: Optional[List[ChatMessage]]):
@@ -145,11 +158,19 @@ async def generate_response(query: str, context_docs: List[dict], conversation_h
         )
         return fallback
     try:
+        logger.info("Creating OpenAI client...")
         client = get_openai_client()
-        context = "\n\n".join([
-            f"Document {i+1} ({doc['category']}): {doc['content']}"
-            for i, doc in enumerate(context_docs)
-        ])
+        
+        # If no context docs, provide a simple response
+        if not context_docs:
+            logger.info("No context documents found, providing general response")
+            context = "No specific policy documents found for this query."
+        else:
+            context = "\n\n".join([
+                f"Document {i+1} ({doc['category']}): {doc['content']}"
+                for i, doc in enumerate(context_docs)
+            ])
+        
         system_message = f"""You are an expert insurance assistant. Use the following policy documents to answer questions accurately and helpfully.
 
 Available policy information:
@@ -161,14 +182,17 @@ Guidelines:
 - Be specific about policy details, coverage, and requirements
 - Use clear, professional language
 - Cite which document(s) you're referencing when possible"""
-        messages: List[ChatCompletionMessageParam] = [
-            ChatCompletionMessageParam(role="system", content=system_message)
+        
+        messages = [
+            {"role": "system", "content": system_message}
         ] + [
-            ChatCompletionMessageParam(role=msg.role, content=msg.content)
+            {"role": msg.role, "content": msg.content}
             for msg in conversation_history[-10:]
         ] + [
-            ChatCompletionMessageParam(role="user", content=query)
+            {"role": "user", "content": query}
         ]
+        
+        logger.info(f"Calling OpenAI with model: {os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4')}")
         response = client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
             messages=messages,
@@ -176,10 +200,16 @@ Guidelines:
             temperature=0.3,
             top_p=0.95
         )
-        return response.choices[0].message.content or ""
+        
+        answer = response.choices[0].message.content or ""
+        logger.info(f"OpenAI response received. Length: {len(answer)}")
+        return answer
+        
     except Exception as e:
-        logger.error(f"OpenAI error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate response")
+        logger.error(f"OpenAI error: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"OpenAI traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"OpenAI failed: {str(e)}")
 
 # -------------------------------
 # API Endpoints
@@ -197,16 +227,32 @@ async def health_check():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
+        logger.info(f"Chat request received: {request.message[:50]}...")
+        
+        # Step 1: Search policies
+        logger.info("Starting policy search...")
         context_docs = await search_policies(request.message)
+        logger.info(f"Search completed. Found {len(context_docs)} documents")
+        
+        # Step 2: Generate response
+        logger.info("Starting response generation...")
         answer = await generate_response(request.message, context_docs, request.conversation_history)
+        logger.info(f"Response generated. Length: {len(answer) if answer else 0}")
+        
+        # Step 3: Format response
         sources = [
             {"id": doc["id"], "title": doc["title"], "category": doc["category"], "snippet": doc["content"]}
             for doc in context_docs
         ]
+        
+        logger.info("Chat request completed successfully")
         return ChatResponse(answer=answer or "", sources=sources, conversation_id=None)
+        
     except Exception as e:
-        logger.error(f"Chat error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process chat request")
+        logger.error(f"Chat error: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
 @app.post("/upload", response_model=UploadResponse)
 async def upload_document(file: UploadFile = File(...), category: str = Form(...), title: str = Form(...)):

@@ -1,30 +1,8 @@
 # AKS Infrastructure Configuration
 # This file orchestrates the AKS deployment using modular components
 
-# Data sources to reference existing resources
-data "azurerm_resource_group" "existing" {
-  name = var.resource_group_name
-}
-
-data "azurerm_key_vault" "existing" {
-  name                = "kv-${random_id.sa.hex}"
-  resource_group_name = var.resource_group_name
-}
-
-data "azurerm_storage_account" "existing" {
-  name                = "${var.storage_account_prefix}${random_id.sa.hex}"
-  resource_group_name = var.resource_group_name
-}
-
-data "azurerm_cognitive_account" "existing_openai" {
-  name                = var.openai_account_name
-  resource_group_name = var.resource_group_name
-}
-
-data "azurerm_search_service" "existing_search" {
-  name                = var.search_service_name
-  resource_group_name = var.resource_group_name
-}
+# Reference the resources being created in main.tf
+# No data sources needed since we're creating everything
 
 # Local values for common tags
 locals {
@@ -40,8 +18,8 @@ locals {
 module "network" {
   source = "./modules/network"
 
-  resource_group_name = data.azurerm_resource_group.existing.name
-  location           = data.azurerm_resource_group.existing.location
+  resource_group_name = azurerm_resource_group.rg.name
+  location           = azurerm_resource_group.rg.location
   
   vnet_name                              = "sageinsure-vnet"
   vnet_address_space                     = ["10.0.0.0/16"]
@@ -59,14 +37,14 @@ module "network" {
 module "identity" {
   source = "./modules/identity"
 
-  resource_group_name = data.azurerm_resource_group.existing.name
-  location           = data.azurerm_resource_group.existing.location
+  resource_group_name = azurerm_resource_group.rg.name
+  location           = azurerm_resource_group.rg.location
   aks_cluster_name   = "sageinsure-aks"
   
-  key_vault_id       = data.azurerm_key_vault.existing.id
-  storage_account_id = data.azurerm_storage_account.existing.id
-  openai_account_id  = data.azurerm_cognitive_account.existing_openai.id
-  search_service_id  = data.azurerm_search_service.existing_search.id
+  key_vault_id       = azurerm_key_vault.kv.id
+  storage_account_id = azurerm_storage_account.sa.id
+  openai_account_id  = azurerm_cognitive_account.openai.id
+  search_service_id  = azurerm_search_service.search.id
 
   tags = local.common_tags
 }
@@ -75,10 +53,10 @@ module "identity" {
 module "keyvault_integration" {
   source = "./modules/keyvault-integration"
 
-  key_vault_id                         = data.azurerm_key_vault.existing.id
-  key_vault_name                       = data.azurerm_key_vault.existing.name
-  resource_group_name                  = data.azurerm_resource_group.existing.name
-  location                            = data.azurerm_resource_group.existing.location
+  key_vault_id                         = azurerm_key_vault.kv.id
+  key_vault_name                       = azurerm_key_vault.kv.name
+  resource_group_name                  = azurerm_resource_group.rg.name
+  location                            = azurerm_resource_group.rg.location
   aks_cluster_identity_principal_id    = module.identity.aks_cluster_identity_principal_id
   aks_workload_identity_principal_id   = module.identity.aks_workload_identity_principal_id
   aks_workload_identity_client_id      = module.identity.aks_workload_identity_client_id
@@ -95,8 +73,8 @@ module "keyvault_integration" {
 module "aks" {
   source = "./modules/aks"
 
-  resource_group_name = data.azurerm_resource_group.existing.name
-  location           = data.azurerm_resource_group.existing.location
+  resource_group_name = azurerm_resource_group.rg.name
+  location           = azurerm_resource_group.rg.location
   cluster_name       = "sageinsure-aks"
   dns_prefix         = "sageinsure"
   kubernetes_version = "1.30.6"
@@ -140,15 +118,15 @@ module "aks" {
 module "azure_services_integration" {
   source = "./modules/azure-services-integration"
 
-  resource_group_name        = data.azurerm_resource_group.existing.name
-  location                  = data.azurerm_resource_group.existing.location
+  resource_group_name        = azurerm_resource_group.rg.name
+  location                  = azurerm_resource_group.rg.location
   private_endpoint_subnet_id = module.network.private_endpoint_subnet_id
   vnet_id                   = module.network.vnet_id
   
-  openai_account_id   = data.azurerm_cognitive_account.existing_openai.id
-  search_service_id   = data.azurerm_search_service.existing_search.id
-  storage_account_id  = data.azurerm_storage_account.existing.id
-  key_vault_id        = data.azurerm_key_vault.existing.id
+  openai_account_id   = azurerm_cognitive_account.openai.id
+  search_service_id   = azurerm_search_service.search.id
+  storage_account_id  = azurerm_storage_account.sa.id
+  key_vault_id        = azurerm_key_vault.kv.id
   
   private_dns_zones = module.network.private_dns_zones
 
@@ -167,9 +145,9 @@ module "platform_addons" {
   cluster_name           = module.aks.cluster_name
   cluster_endpoint       = module.aks.cluster_endpoint
   cluster_ca_certificate = module.aks.cluster_ca_certificate
-  resource_group_name    = data.azurerm_resource_group.existing.name
-  location              = data.azurerm_resource_group.existing.location
-  key_vault_id          = data.azurerm_key_vault.existing.id
+  resource_group_name    = azurerm_resource_group.rg.name
+  location              = azurerm_resource_group.rg.location
+  key_vault_id          = azurerm_key_vault.kv.id
   
   # Configure for production use
   acme_email            = "admin@sageinsure.com"  # Replace with actual email

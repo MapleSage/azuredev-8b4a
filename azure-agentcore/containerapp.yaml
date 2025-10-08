@@ -1,0 +1,51 @@
+apiVersion: 2023-05-01
+location: eastus
+resourceGroup: sageinsure-agentcore-rg
+properties:
+  managedEnvironmentId: /subscriptions/2bfa9715-785b-445f-8102-6a423a7495ef/resourceGroups/sageinsure-agentcore-rg/providers/Microsoft.App/managedEnvironments/sageagentcore-env
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true
+      targetPort: 8000
+      transport: http
+      customDomains:
+      - name: api-sageinsure.maplesage.com
+        certificateId: /subscriptions/2bfa9715-785b-445f-8102-6a423a7495ef/resourceGroups/sageinsure-agentcore-rg/providers/Microsoft.App/managedEnvironments/sageagentcore-env/certificates/api-sageinsure-maplesage-com
+    registries:
+    - server: sageagentcoreacr.azurecr.io
+      identity: system
+  template:
+    containers:
+    - image: sageagentcoreacr.azurecr.io/sageinsure-agentcore:v1
+      name: sageinsure-agentcore
+      env:
+      - name: AZURE_SEARCH_ENDPOINT
+        value: "https://sageinsure-search.search.windows.net"
+      - name: AZURE_OPENAI_ENDPOINT
+        value: "https://eastus.api.cognitive.microsoft.com/"
+      - name: AZURE_STORAGE_ACCOUNT_NAME
+        value: "policydocseedfa81f"
+      - name: AZURE_OPENAI_DEPLOYMENT
+        value: "gpt4o-deployment"
+      - name: AZURE_SEARCH_INDEX
+        value: "policy-index"
+      - name: AZURE_OPENAI_API_KEY
+        value: "172068a0b5a348efa948c8339cca0329"
+      - name: AZURE_SEARCH_API_KEY
+        value: "DYvM0ODN7nEkVxoBy7KtHsCKYcxH6DtUvfg3fQzlO8AzSeBsKgjX"
+      - name: ENVIRONMENT
+        value: "production"
+      - name: LOG_LEVEL
+        value: "INFO"
+      resources:
+        cpu: 1.0
+        memory: 2Gi
+    scale:
+      minReplicas: 1
+      maxReplicas: 10
+      rules:
+      - name: http-scaling
+        http:
+          metadata:
+            concurrentRequests: "30"

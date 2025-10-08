@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SageInsure - Azure Platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f5f5; }
+        .header { background: #0078d4; color: white; padding: 1rem; display: flex; align-items: center; }
+        .logo { font-size: 1.5rem; font-weight: bold; }
+        .nav { display: flex; gap: 1rem; margin-left: 2rem; }
+        .nav-item { padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer; }
+        .nav-item:hover { background: rgba(255,255,255,0.2); }
+        .nav-item.active { background: rgba(255,255,255,0.3); }
+        .container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
+        .tab-content { background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .agent-card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; background: #f9f9f9; }
+        .agent-card h3 { color: #0078d4; margin-bottom: 0.5rem; }
+        .status { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem; }
+        .status.deployed { background: #d4edda; color: #155724; }
+        .status.pending { background: #fff3cd; color: #856404; }
+        iframe { width: 100%; height: 600px; border: none; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🛡️ SageInsure Azure</div>
+        <div class="nav">
+            <div class="nav-item active" onclick="showTab('dashboard')">Dashboard</div>
+            <div class="nav-item" onclick="showTab('policy')">Policy Agent</div>
+            <div class="nav-item" onclick="showTab('underwriting')">Underwriting</div>
+            <div class="nav-item" onclick="showTab('fnol')">FNOL</div>
+            <div class="nav-item" onclick="showTab('research')">Research</div>
+            <div class="nav-item" onclick="showTab('cyber')">Cyber</div>
+            <div class="nav-item" onclick="showTab('marine')">Marine</div>
+            <div class="nav-item" onclick="showTab('claims')">Claims</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div id="dashboard" class="tab-content">
+            <h2>SageInsure Azure Platform Dashboard</h2>
+            <p>Complete insurance platform deployed on Azure with Agent Core runtime</p>
+            
+            <div class="agent-grid">
+                <div class="agent-card">
+                    <h3>Policy Agent</h3>
+                    <span class="status deployed">Deployed</span>
+                    <p>Azure Agent Core with full KB, Memory, RAG capabilities</p>
+                    <small>URL: sageinsure-agent.greenforest-00f97c58.eastus.azurecontainerapps.io</small>
+                </div>
+                
+                <div class="agent-card">
+                    <h3>Underwriting Workbench</h3>
+                    <span class="status pending">Ready</span>
+                    <p>Document analysis and risk assessment workbench</p>
+                </div>
+                
+                <div class="agent-card">
+                    <h3>FNOL Processor</h3>
+                    <span class="status pending">Ready</span>
+                    <p>First Notice of Loss document processing</p>
+                </div>
+                
+                <div class="agent-card">
+                    <h3>Research Assistant</h3>
+                    <span class="status pending">Ready</span>
+                    <p>Life science research with MCP integration</p>
+                </div>
+                
+                <div class="agent-card">
+                    <h3>Cyber Insurance</h3>
+                    <span class="status pending">Ready</span>
+                    <p>Security risk assessment and cyber coverage</p>
+                </div>
+                
+                <div class="agent-card">
+                    <h3>Marine Insurance</h3>
+                    <span class="status pending">Ready</span>
+                    <p>Vessel and cargo insurance specialist</p>
+                </div>
+                
+                <div class="agent-card">
+                    <h3>Claims Agent</h3>
+                    <span class="status pending">Ready</span>
+                    <p>Claims lifecycle management and processing</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="policy" class="tab-content" style="display:none;">
+            <h2>Policy Agent - Azure Agent Core</h2>
+            <iframe src="https://sageinsure-agent.greenforest-00f97c58.eastus.azurecontainerapps.io"></iframe>
+        </div>
+
+        <div id="underwriting" class="tab-content" style="display:none;">
+            <h2>Underwriting Workbench</h2>
+            <p>Document analysis and risk assessment platform</p>
+        </div>
+
+        <div id="fnol" class="tab-content" style="display:none;">
+            <h2>FNOL Processor</h2>
+            <p>First Notice of Loss document classification and processing</p>
+        </div>
+
+        <div id="research" class="tab-content" style="display:none;">
+            <h2>Research Assistant</h2>
+            <p>Life science research with PubMed, ArXiv, and clinical trials integration</p>
+        </div>
+
+        <div id="cyber" class="tab-content" style="display:none;">
+            <h2>Cyber Insurance</h2>
+            <p>Security risk assessment and cyber coverage analysis</p>
+        </div>
+
+        <div id="marine" class="tab-content" style="display:none;">
+            <h2>Marine Insurance</h2>
+            <p>Vessel and cargo insurance specialist agent</p>
+        </div>
+
+        <div id="claims" class="tab-content" style="display:none;">
+            <h2>Claims Agent</h2>
+            <p>Claims lifecycle management and settlement processing</p>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.style.display = 'none');
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            
+            document.getElementById(tabName).style.display = 'block';
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>

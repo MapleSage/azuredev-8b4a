@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sageinsure-agentcore
+  namespace: staging
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sageinsure-agentcore
+  template:
+    metadata:
+      labels:
+        app: sageinsure-agentcore
+    spec:
+      containers:
+      - name: agentcore
+        image: python:3.11-slim
+        command: ["/bin/sh"]
+        args: ["-c", "pip install fastapi uvicorn requests && python -c \"
+from fastapi import FastAPI
+import uvicorn
+
+app = FastAPI()
+
+@app.get('/')
+def health():
+    return {'status': 'SageInsure Azure AgentCore Running', 'version': '2.0'}
+
+@app.post('/invocations')
+def chat(request: dict):
+    prompt = request.get('prompt', 'Hello')
+    return {'result': f'I am your SageInsure AI assistant. You asked: {prompt}. I can help with insurance policies.'}
+
+if __name__ == '__main__':
+    uvicorn.run(app, host='0.0.0.0', port=8000)
+\""]
+        ports:
+        - containerPort: 8000
+        env:
+        - name: PORT
+          value: "8000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sageinsure-agentcore
+  namespace: staging
+spec:
+  selector:
+    app: sageinsure-agentcore
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: LoadBalancer

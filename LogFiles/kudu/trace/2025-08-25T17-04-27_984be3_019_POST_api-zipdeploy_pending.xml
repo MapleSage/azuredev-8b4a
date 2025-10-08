@@ -1,0 +1,15 @@
+<step title="Incoming Request" date="2025-08-25T17:04:27.565" instance="984be3" url="/api/zipdeploy?isAsync=true" method="POST" type="request" pid="770,1,21" Accept="*/*" Host="sageinsure-api.scm.azurewebsites.net" User-Agent="AZURECLI/2.75.0 (HOMEBREW)" Accept-Encoding="gzip, deflate" Authorization="Bas..." Cache-Control="no-cache" Content-Type="application/octet-stream" Cookie="ARRAffinity=984be3d3ba9615669dc57bb8932bb241f00dc260a93772a8c4fefb6be05aa32c; ARRAffinitySameSite=984be3d3ba9615669dc57bb8932bb241f00dc260a93772a8c4fefb6be05aa32c" Content-Length="6260" x-ms-client-request-id="87a0b7ea-81d5-11f0-9959-ea336021ac09" x-ms-artifact-checksum="b628fca5d9c93690f1b7362629f719b7b7c767b60fc6426f0fa5f188b805aea3" X-ARR-LOG-ID="87a0b7ea-81d5-11f0-9959-ea336021ac09" CLIENT-IP="182.77.56.54:51275" X-SITE-DEPLOYMENT-ID="sageinsure-api" WAS-DEFAULT-HOSTNAME="sageinsure-api.scm.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/zipdeploy?isAsync=true" X-Client-IP="182.77.56.54" X-Client-Port="51275" >
+  <step title="ZipPushDeploy" date="2025-08-25T17:04:27.663" >
+    <step title="ZipDeploy. Extract zip. Remote build." date="2025-08-25T17:04:27.685" /><!-- duration: 10ms -->
+    <step title="Starting PushDeployAsync" date="2025-08-25T17:04:27.711" /><!-- duration: 11ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/b144619f-8068-4f37-9abe-5752f593520d.zip" date="2025-08-25T17:04:27.781" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/b144619f-8068-4f37-9abe-5752f593520d.zip" date="2025-08-25T17:04:27.801" /><!-- duration: 46ms -->
+    </step><!-- duration: 144ms -->
+    <step title="Removing previous build artifact&apos;s manifest file" date="2025-08-25T17:04:27.934" >
+      <step title="Start deployment in the background" date="2025-08-25T17:04:27.946" >
+        <step title="Acquiring Deployment Lock" date="2025-08-25T17:04:27.993" /><!-- duration: 11ms -->
+        <step title="Acquired Deployment Lock" date="2025-08-25T17:04:28.043" /><!-- duration: 5ms -->
+      </step><!-- duration: 725ms -->
+    </step><!-- duration: 790ms -->
+    <step title="Outgoing response" date="2025-08-25T17:04:28.728" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 6ms -->
+  </step><!-- duration: 1081ms -->
