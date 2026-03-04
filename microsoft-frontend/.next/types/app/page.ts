@@ -1,4 +1,4 @@
-// File: /Volumes/Macintosh HD Ext./Developer/azure-insurance/microsoft-frontend/app/page.tsx
+// File: /Volumes/Macintosh HD Ext/azuredev-8b4a/microsoft-frontend/app/page.tsx
 import * as entry from '../../../app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
