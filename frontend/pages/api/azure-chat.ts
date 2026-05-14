@@ -1,24 +1,79 @@
 import { NextApiRequest, NextApiResponse } from "next";
 
-// Live Azure Backend
-const LOCAL_BACKEND_URL = "http://localhost:8000";
-const AZURE_BACKEND_URL = "https://sageinsure-rag-api.happyriver-cf203d90.eastus.azurecontainerapps.io";
+const AGENTCORE_URL =
+  process.env.SAGEINFRA_AGENTCORE_URL ||
+  process.env.NEXT_PUBLIC_AGENTCORE_API_URL ||
+  "http://127.0.0.1:8000";
 
 interface ChatRequest {
   text: string;
-  conversationId: string;
-  specialist: string;
-  context?: any[];
+  conversationId?: string;
+  specialist?: string;
+  context?: Array<{
+    role?: string;
+    content?: string;
+    type?: string;
+    summary?: string;
+    label?: string;
+  }>;
 }
 
-interface AgentResponse {
-  response: string;
-  agent: string;
-  specialist: string;
-  confidence?: number;
-  sources?: any[];
-  tokens_used?: number;
-  status: string;
+const specialistLabels: Record<string, string> = {
+  CLAIMS_CHAT: "Claims Chat",
+  CLAIMS_MANAGER: "Claims Chat",
+  UNDERWRITING: "Underwriting",
+  UNDERWRITER: "Underwriting",
+  RESEARCH_ASSISTANT: "Research",
+  MARINE_INSURANCE: "Marine Insurance",
+  MARINE_SPECIALIST: "Marine Insurance",
+  CYBER_INSURANCE: "Cyber Insurance",
+  CYBER_SPECIALIST: "Cyber Insurance",
+  FNOL_PROCESSOR: "FNOL Intake",
+  CLAIMS_LIFECYCLE: "Claim Lifecycle",
+  POLICY_ASSISTANT: "Policy Assistant",
+};
+
+function normalizeSpecialist(specialist?: string) {
+  const mapping: Record<string, string> = {
+    claims: "CLAIMS_CHAT",
+    underwriting: "UNDERWRITING",
+    research: "RESEARCH_ASSISTANT",
+    marine: "MARINE_INSURANCE",
+    cyber: "CYBER_INSURANCE",
+    fnol: "FNOL_PROCESSOR",
+    lifecycle: "CLAIMS_LIFECYCLE",
+    policy: "POLICY_ASSISTANT",
+  };
+
+  if (!specialist) return "CLAIMS_CHAT";
+  return mapping[specialist] || specialist;
+}
+
+function fallbackResponse(text: string, specialist: string, reason?: string) {
+  const label = specialistLabels[specialist] || "Insurance Assistant";
+  const lower = text.toLowerCase();
+
+  let response = `I'm your ${label} assistant. I can help with claims, policy questions, coverage guidance, FNOL intake, underwriting reviews, and specialist insurance workflows.`;
+
+  if (/^(hi|hello|hey)\b/.test(lower.trim())) {
+    response = `Hello — I'm your SageSure ${label} assistant. Tell me what you need help with, and I'll route it to the right insurance workflow.`;
+  } else if (lower.includes("claim") || lower.includes("damage") || lower.includes("loss")) {
+    response = "I can help with that claim. Please share the policy number first, then I’ll collect the incident details one step at a time.";
+  } else if (lower.includes("underwrit") || lower.includes("quote") || lower.includes("premium")) {
+    response = "I can help with underwriting. Please share the insured name and the type of coverage requested, then I’ll gather the risk details.";
+  }
+
+  return {
+    response,
+    answer: response,
+    agent: `SageSure ${label}`,
+    specialist,
+    confidence: 0.72,
+    status: "fallback",
+    sources: [],
+    timestamp: new Date().toISOString(),
+    handled_by: reason ? `Local fallback: ${reason}` : "Local fallback",
+  };
 }
 
 export default async function handler(
@@ -29,95 +84,84 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const { text, conversationId, specialist }: ChatRequest = req.body;
+  const normalizedSpecialist = normalizeSpecialist(specialist);
+  const context = Array.isArray(req.body?.context) ? req.body.context : [];
+
+  if (!text?.trim()) {
+    return res.status(400).json({ error: "Text is required" });
+  }
+
   try {
-    const { text, conversationId, specialist }: ChatRequest = req.body;
+    const chatHistory = context
+      .filter(
+        (message) =>
+          typeof message?.role === "string" &&
+          typeof message?.content === "string" &&
+          message.content.trim(),
+      )
+      .slice(-12)
+      .map((message) => ({
+        role: message.role as string,
+        content: message.content as string,
+      }));
 
-    if (!text) {
-      return res.status(400).json({ error: "Text is required" });
-    }
+    const workflowContext = context
+      .filter((message) => !message?.role && (message?.summary || message?.content))
+      .slice(-12)
+      .map((message) => {
+        const label = message.label || message.type || "workflow";
+        const content = message.summary || message.content || "";
+        return `${label}: ${content}`;
+      });
 
-    console.log(`🤖 Calling Real Azure Agents: ${specialist} - "${text}"`);
+    const contextSummary = [
+      ...chatHistory.map((message) => `${message.role}: ${message.content}`),
+      ...workflowContext,
+    ].join("\n");
+    const effectiveMessage = contextSummary
+      ? `Use the following app/session context when answering.\n${contextSummary}\n\nUser message: ${text}`
+      : text;
 
-    // Call the real agents API that routes to working Azure endpoints
-    const backendResponse = await fetch('/api/real-agents-chat', {
+    const response = await fetch(`${AGENTCORE_URL.replace(/\/$/, "")}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: text,
-        conversationId: conversationId,
-        specialist: specialist
+        message: effectiveMessage,
+        session_id: conversationId || `session-${Date.now()}`,
+        conversation_history: chatHistory,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(Number(process.env.AGENTCORE_CHAT_TIMEOUT_MS || 45000)),
     });
 
-    if (!backendResponse.ok) {
-      throw new Error(`Backend returned ${backendResponse.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`AgentCore returned ${response.status}: ${errorText}`);
     }
 
-    const backendData = await backendResponse.json();
-    
-    const response = {
-      response: backendData.answer || backendData.response || "Response from SageInsure AI",
-      agent: backendData.agent || `SageInsure AI ${specialist.replace('_', ' ')}`,
-      specialist: specialist,
-      confidence: backendData.confidence || 0.95,
-      status: backendData.status || "success",
-      sources: backendData.sources || [],
-      conversationId,
-      timestamp: backendData.timestamp || new Date().toISOString(),
-      handled_by: "Azure OpenAI + Search",
-      domain: getSpecialistDomain(specialist),
-      intent: detectIntent(text),
-    };
+    const data = await response.json();
+    const answer = data.answer || data.response || "Response from SageSure AI";
 
-    console.log(`✅ Backend response for ${specialist}`);
-    return res.status(200).json(response);
-
+    return res.status(200).json({
+      response: answer,
+      answer,
+      agent: `SageSure ${specialistLabels[normalizedSpecialist] || "AI"}`,
+      specialist: normalizedSpecialist,
+      confidence: data.confidence || 0.95,
+      status: "success",
+      sources: data.sources || [],
+      conversationId: data.conversation_id || conversationId,
+      timestamp: new Date().toISOString(),
+      handled_by: "dev01 sageinfra-agentcore",
+      agent_trace: data.agent_trace || [],
+      memory_context: data.memory_context || {},
+    });
   } catch (error) {
-    console.error("Azure Backend error:", error);
-    
-    return res.status(500).json({
-      error: "Azure backend unavailable",
-      message: error instanceof Error ? error.message : "Unknown error",
-      specialist: req.body.specialist || "UNKNOWN",
+    console.error("AgentCore chat error:", error);
+    const reason = error instanceof Error ? error.message : "Unknown error";
+    return res.status(200).json({
+      ...fallbackResponse(text, normalizedSpecialist, reason),
+      conversationId: conversationId || `session-${Date.now()}`,
     });
   }
-}
-
-
-
-function getSpecialistDomain(specialist: string): string {
-  const domains = {
-    CLAIMS_MANAGER: "Claims Processing",
-    POLICY_ASSISTANT: "Policy Management", 
-    MARINE_SPECIALIST: "Marine Insurance",
-    CYBER_SPECIALIST: "Cyber Security",
-    FNOL_PROCESSOR: "First Notice of Loss",
-    UNDERWRITER: "Risk Assessment",
-    RESEARCH_ASSISTANT: "Market Research",
-  };
-  
-  return domains[specialist as keyof typeof domains] || "General Insurance";
-}
-
-function detectIntent(text: string): string {
-  const textLower = text.toLowerCase();
-  
-  if (textLower.includes("file") || textLower.includes("submit") || textLower.includes("report")) {
-    return "file_claim";
-  }
-  if (textLower.includes("status") || textLower.includes("track")) {
-    return "check_status";
-  }
-  if (textLower.includes("coverage") || textLower.includes("covered")) {
-    return "coverage_inquiry";
-  }
-  if (textLower.includes("premium") || textLower.includes("cost") || textLower.includes("price")) {
-    return "pricing_inquiry";
-  }
-  if (textLower.includes("policy") || textLower.includes("renewal")) {
-    return "policy_management";
-  }
-  
-  return "general_inquiry";
 }

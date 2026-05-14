@@ -31,9 +31,18 @@ interface Conversation {
 interface ChatAreaProps {
   conversation: Conversation | null;
   isLoading?: boolean;
+  title?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }
 
-export function ChatArea({ conversation, isLoading }: ChatAreaProps) {
+export function ChatArea({
+  conversation,
+  isLoading,
+  title = "SageSure AI",
+  emptyTitle = "Welcome to SageSure",
+  emptyDescription = "Ask about a claim, policy, document, or workflow. I’ll keep the current session context as you work.",
+}: ChatAreaProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -48,15 +57,11 @@ export function ChatArea({ conversation, isLoading }: ChatAreaProps) {
     return (
       <div className="flex-1 flex items-center justify-center bg-white">
         <div className="text-center max-w-md">
-          <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-8 h-8 text-blue-500" />
+          <div className="w-16 h-16 bg-[#EAF7F8] rounded-full flex items-center justify-center mx-auto mb-4">
+            <Shield className="w-8 h-8 text-[#007A8A]" />
           </div>
-          <h2 className="text-xl font-semibold mb-2">Welcome to SageInsure</h2>
-          <p className="text-gray-600 mb-4">
-            Your AI-powered insurance claims assistant. I&apos;m here to help
-            you file claims, check policy details, and answer insurance
-            questions.
-          </p>
+          <h2 className="text-xl font-semibold mb-2 text-[#24384A]">{emptyTitle}</h2>
+          <p className="text-gray-600 mb-4">{emptyDescription}</p>
           <div className="grid grid-cols-1 gap-2 text-sm">
             <div className="flex items-center gap-2 text-gray-600">
               <FileText className="w-4 h-4" />
@@ -89,10 +94,10 @@ export function ChatArea({ conversation, isLoading }: ChatAreaProps) {
                     <User className="w-4 h-4" />
                   </AvatarFallback>
                 ) : (
-                  <AvatarImage src="/sageinsure_favion.png" alt="SageInsure" />
+                  <AvatarImage src="/brand/sagesure-mark.png" alt="SageSure" />
                 )}
                 {message.type === "assistant" && (
-                  <AvatarFallback className="bg-blue-500 text-white">
+                  <AvatarFallback className="bg-[#007A8A] text-white">
                     <Shield className="w-4 h-4" />
                   </AvatarFallback>
                 )}
@@ -100,7 +105,7 @@ export function ChatArea({ conversation, isLoading }: ChatAreaProps) {
               <div className="flex-1 space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-sm">
-                    {message.type === "user" ? "You" : "SageInsure AI"}
+                    {message.type === "user" ? "You" : title}
                   </span>
                   <span className="text-xs text-gray-600">
                     {message.timestamp}
@@ -112,7 +117,7 @@ export function ChatArea({ conversation, isLoading }: ChatAreaProps) {
                       <div key={index} className={index > 0 ? "mt-1" : ""}>
                         {line.startsWith("• ") ? (
                           <div className="flex items-start">
-                            <span className="text-blue-500 mr-2">•</span>
+                            <span className="text-[#007A8A] mr-2">•</span>
                             <span>{line.substring(2)}</span>
                           </div>
                         ) : line.includes(":") &&
@@ -233,13 +238,13 @@ export function ChatArea({ conversation, isLoading }: ChatAreaProps) {
           {isLoading && (
             <div className="flex gap-4">
               <Avatar className="w-8 h-8 flex-shrink-0">
-                <AvatarFallback className="bg-blue-500 text-white">
+                <AvatarFallback className="bg-[#007A8A] text-white">
                   <Shield className="w-4 h-4" />
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 space-y-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm">SageInsure AI</span>
+                  <span className="font-medium text-sm">{title}</span>
                   <span className="text-xs text-gray-600">typing...</span>
                 </div>
                 <div className="flex items-center gap-1">

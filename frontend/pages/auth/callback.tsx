@@ -2,38 +2,29 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useMsal } from "@azure/msal-react";
 import { EventType } from "@azure/msal-browser";
-import {
-  getRedirectLoopDetector,
-  trackAuthAttempt,
-  clearRedirectLoopData,
-} from "../../lib/utils/redirect-loop-detector";
+import { clearRedirectLoopData } from "../../lib/utils/redirect-loop-detector";
 
 export default function AuthCallback() {
   const router = useRouter();
   const { instance } = useMsal();
   const [message, setMessage] = useState("Processing authentication...");
+  const [detail, setDetail] = useState<string | null>(null);
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
         setMessage("Processing MSAL authentication...");
+        setDetail(null);
 
-        // Check for redirect loop before processing callback
-        const detector = getRedirectLoopDetector();
-        if (detector.isLoopDetected() && !detector.shouldBypass()) {
-          console.error("Redirect loop detected in callback");
-          setMessage(
-            "Authentication error: Too many redirect attempts. Please wait and try again."
-          );
-
-          setTimeout(() => {
-            router.replace("/?error=redirect_loop");
-          }, 3000);
-          return;
+        const queryError = router.query.error;
+        const queryErrorDescription = router.query.error_description;
+        if (queryError || queryErrorDescription) {
+          const description = Array.isArray(queryErrorDescription)
+            ? queryErrorDescription.join(" ")
+            : queryErrorDescription;
+          const code = Array.isArray(queryError) ? queryError.join(" ") : queryError;
+          throw new Error([code, description].filter(Boolean).join(": "));
         }
-
-        // Track this callback attempt
-        trackAuthAttempt(window.location.href);
 
         // Handle the redirect response with timeout
         const timeoutPromise = new Promise((_, reject) => {
@@ -79,24 +70,16 @@ export default function AuthCallback() {
             }, 1000);
           }
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("MSAL callback error:", error);
+        const errorMessage =
+          error?.errorMessage ||
+          error?.message ||
+          error?.toString?.() ||
+          "Unknown authentication error";
 
-        // Check if this might be a timeout or loop-related error
-        const detector = getRedirectLoopDetector();
-        if (detector.getAttemptCount() > 3) {
-          setMessage(
-            "Authentication failed: Too many attempts. Please wait and try again."
-          );
-          setTimeout(() => {
-            router.replace("/?error=auth_failed");
-          }, 3000);
-        } else {
-          setMessage("Authentication failed. Redirecting...");
-          setTimeout(() => {
-            router.replace("/");
-          }, 2000);
-        }
+        setMessage("Authentication failed.");
+        setDetail(errorMessage);
       }
     };
 
@@ -124,9 +107,38 @@ export default function AuthCallback() {
   }, [router, instance]);
 
   return (
-    <div className="h-screen flex flex-col items-center justify-center">
-      <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
-      <p className="mt-4 text-gray-600">{message}</p>
+    <div className="h-screen flex flex-col items-center justify-center bg-slate-50 px-6">
+      {message === "Authentication failed." ? (
+        <div className="max-w-xl rounded-2xl bg-white p-8 text-center shadow-xl">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+            <img
+              src="/brand/sagesure-mark.png"
+              alt="SageSure"
+              className="h-10 w-10 object-contain"
+            />
+          </div>
+          <h1 className="text-2xl font-semibold text-slate-900">Authentication failed</h1>
+          {detail && (
+            <p className="mt-4 break-words rounded-lg bg-red-50 p-3 text-left text-sm text-red-700">
+              {detail}
+            </p>
+          )}
+          <button
+            onClick={() => {
+              clearRedirectLoopData();
+              router.replace("/");
+            }}
+            className="mt-6 rounded-lg bg-blue-600 px-5 py-3 font-medium text-white hover:bg-blue-700"
+          >
+            Reset sign-in state
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
+          <p className="mt-4 text-gray-600">{message}</p>
+        </>
+      )}
     </div>
   );
 }

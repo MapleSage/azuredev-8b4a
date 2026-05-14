@@ -4,7 +4,8 @@ export default function Document() {
   return (
     <Html>
       <Head>
-        <link rel="icon" href="/sageinsure_favion.png" />
+        <link rel="icon" href="/favicon.png" type="image/png" />
+        <link rel="shortcut icon" href="/favicon.png" />
       </Head>
       <body>
         <Main />

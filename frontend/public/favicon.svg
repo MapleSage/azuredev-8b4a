@@ -1,0 +1,30 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SageSure">
+  <defs>
+    <linearGradient id="shieldFill" x1="31" y1="16" x2="94" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B7892"/>
+      <stop offset="0.5" stop-color="#17B7B1"/>
+      <stop offset="1" stop-color="#0A3B63"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="23" y1="73" x2="111" y2="91" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22C7B8"/>
+      <stop offset="0.58" stop-color="#0AA6B5"/>
+      <stop offset="1" stop-color="#0A4F7A"/>
+    </linearGradient>
+    <linearGradient id="shadowWave" x1="43" y1="90" x2="103" y2="105" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0C6E90" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#062E50" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="26" fill="#F8FCFD"/>
+  <path d="M64 8L107 24.5V57.5C107 87.7 88.5 109.9 64 120C39.5 109.9 21 87.7 21 57.5V24.5L64 8Z" fill="#F8FCFD" stroke="#0A6E90" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M64 17L98 30V57C98 81.6 84.6 99.4 64 108C43.4 99.4 30 81.6 30 57V30L64 17Z" fill="url(#shieldFill)" opacity="0.13"/>
+  <path d="M45 63C36.2 62.6 30.2 56.2 30.2 47.9C30.2 39.4 36.7 33.3 45.1 33.3C48.6 25.4 56.2 20.5 65 20.5C74.2 20.5 82.1 26 85.3 34.1C93.2 34.9 98.9 41.1 98.9 49C98.9 56.5 93.6 62.8 86.4 64.1" stroke="#064B72" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M65 23.5V67" stroke="#064B72" stroke-width="5" stroke-linecap="round"/>
+  <path d="M65 49L50.5 35.5M65 53L79 39.5M47 57L36 47M82 58L94 48" stroke="#064B72" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="49" cy="35" r="6" fill="#064B72"/>
+  <circle cx="80" cy="39" r="6" fill="#064B72"/>
+  <circle cx="36" cy="47" r="6" fill="#064B72"/>
+  <circle cx="94" cy="48" r="6" fill="#064B72"/>
+  <path d="M20 72C40 83 54 82 75 69C91 59.2 105.5 58.8 116 67.4C98.6 72.7 88.5 82.9 75.5 91.2C55.4 104 34.8 94.6 20 72Z" fill="url(#wave)"/>
+  <path d="M42 94C59.8 99.4 73.2 94.5 87.4 85.5C96.6 79.6 104 76.9 113 75.9C102.2 93.1 88 104.2 64 114C55.2 110.4 47.8 105.6 42 94Z" fill="url(#shadowWave)" opacity="0.78"/>
+</svg>

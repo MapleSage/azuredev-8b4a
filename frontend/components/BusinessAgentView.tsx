@@ -1,36 +1,40 @@
-import { useState } from 'react'
+import { useState } from "react";
 
 interface BusinessAgentViewProps {
-  agent: string
-  onClose: () => void
+  agent: string;
+  onClose: () => void;
 }
 
 interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: Date
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
 }
 
-export default function BusinessAgentView({ agent, onClose }: BusinessAgentViewProps) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+export default function BusinessAgentView({
+  agent,
+  onClose,
+}: BusinessAgentViewProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const getAgentConfig = (agentType: string) => {
     switch (agentType) {
-      case 'crm':
+      case "crm":
         return {
-          title: 'Customer Relationship Management Agent',
-          icon: '👥',
-          color: 'from-blue-600 to-indigo-600',
-          description: 'Manage customer interactions, track leads, and analyze customer data',
+          title: "Customer Relationship Management Agent",
+          icon: "👥",
+          color: "from-blue-600 to-indigo-600",
+          description:
+            "Manage customer interactions, track leads, and analyze customer data",
           capabilities: [
-            'Customer data management',
-            'Lead tracking and scoring',
-            'Sales pipeline analysis',
-            'Customer interaction history',
-            'Automated follow-ups'
+            "Customer data management",
+            "Lead tracking and scoring",
+            "Sales pipeline analysis",
+            "Customer interaction history",
+            "Automated follow-ups",
           ],
           welcomeMessage: `🏢 **CRM Agent Ready**
 
@@ -56,20 +60,21 @@ I'm your Customer Relationship Management assistant. I can help you with:
 • Automated email campaigns
 • Task management and assignments
 
-How can I assist with your CRM needs today?`
-        }
-      case 'hr':
+How can I assist with your CRM needs today?`,
+        };
+      case "hr":
         return {
-          title: 'HR Assistant',
-          icon: '🏢',
-          color: 'from-green-600 to-teal-600',
-          description: 'Employee management, benefits, payroll, and HR policies',
+          title: "HR Assistant",
+          icon: "🏢",
+          color: "from-green-600 to-teal-600",
+          description:
+            "Employee management, benefits, payroll, and HR policies",
           capabilities: [
-            'Employee onboarding',
-            'Benefits administration',
-            'Payroll queries',
-            'Policy guidance',
-            'Performance management'
+            "Employee onboarding",
+            "Benefits administration",
+            "Payroll queries",
+            "Policy guidance",
+            "Performance management",
           ],
           welcomeMessage: `👋 **HR Assistant at Your Service**
 
@@ -99,20 +104,21 @@ I'm here to help with all your Human Resources needs:
 • Slack integration for team communication
 • SQL queries for HR analytics
 
-What HR topic can I help you with today?`
-        }
-      case 'marketing':
+What HR topic can I help you with today?`,
+        };
+      case "marketing":
         return {
-          title: 'Marketing Agent',
-          icon: '📈',
-          color: 'from-purple-600 to-pink-600',
-          description: 'Campaign management, content creation, and marketing analytics',
+          title: "Marketing Agent",
+          icon: "📈",
+          color: "from-purple-600 to-pink-600",
+          description:
+            "Campaign management, content creation, and marketing analytics",
           capabilities: [
-            'Campaign planning',
-            'Content generation',
-            'Market analysis',
-            'Lead generation',
-            'Performance tracking'
+            "Campaign planning",
+            "Content generation",
+            "Market analysis",
+            "Lead generation",
+            "Performance tracking",
           ],
           welcomeMessage: `🚀 **Marketing Agent Ready to Boost Your Brand**
 
@@ -142,20 +148,21 @@ I'm your AI-powered marketing assistant specializing in:
 • Conversion funnel optimization
 • Customer journey mapping
 
-Ready to elevate your marketing strategy?`
-        }
-      case 'investment':
+Ready to elevate your marketing strategy?`,
+        };
+      case "investment":
         return {
-          title: 'Investment Research Assistant',
-          icon: '💼',
-          color: 'from-yellow-600 to-orange-600',
-          description: 'Financial analysis, market research, and investment insights',
+          title: "Investment Research Assistant",
+          icon: "💼",
+          color: "from-yellow-600 to-orange-600",
+          description:
+            "Financial analysis, market research, and investment insights",
           capabilities: [
-            'Stock analysis',
-            'Market research',
-            'Portfolio management',
-            'Risk assessment',
-            'Financial reporting'
+            "Stock analysis",
+            "Market research",
+            "Portfolio management",
+            "Risk assessment",
+            "Financial reporting",
           ],
           welcomeMessage: `📊 **Investment Research Assistant**
 
@@ -185,89 +192,93 @@ I'm your AI-powered financial research assistant providing:
 • Real-time data integration
 • Custom report generation
 
-What investment research can I help you with today?`
-        }
+What investment research can I help you with today?`,
+        };
       default:
         return {
-          title: 'Business Agent',
-          icon: '🤖',
-          color: 'from-gray-600 to-gray-700',
-          description: 'AI-powered business assistant',
-          capabilities: ['General assistance'],
-          welcomeMessage: 'How can I help you today?'
-        }
+          title: "Business Agent",
+          icon: "🤖",
+          color: "from-gray-600 to-gray-700",
+          description: "AI-powered business assistant",
+          capabilities: ["General assistance"],
+          welcomeMessage: "How can I help you today?",
+        };
     }
-  }
+  };
 
-  const config = getAgentConfig(agent)
+  const config = getAgentConfig(agent);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isLoading) return
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      role: 'user',
+      role: "user",
       content: input,
-      timestamp: new Date()
-    }
+      timestamp: new Date(),
+    };
 
-    setMessages(prev => [...prev, userMessage])
-    setInput('')
-    setIsLoading(true)
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setIsLoading(true);
 
     try {
       // Mock response for business agents
-      const response = await fetch('/api/business-agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/business-agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           agent,
-          query: input
-        })
-      })
+          query: input,
+        }),
+      });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`)
+        throw new Error(`API error: ${response.status}`);
       }
 
-      const data = await response.json()
-      
+      const data = await response.json();
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.response || 'No response received',
-        timestamp: new Date()
-      }
+        role: "assistant",
+        content: data.response || "No response received",
+        timestamp: new Date(),
+      };
 
-      setMessages(prev => [...prev, assistantMessage])
+      setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `❌ Error: ${error.message}\n\n*Note: Business agents require backend integration with Bedrock Agents for full functionality.*`,
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, errorMessage])
+        role: "assistant",
+        content: `❌ Error: ${error.message}\n\n*Note: This workspace requires the private SageSure operations workflow to be reachable for live answers.*`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   // Initialize with welcome message
   if (messages.length === 0) {
-    setMessages([{
-      id: '1',
-      role: 'assistant',
-      content: config.welcomeMessage,
-      timestamp: new Date()
-    }])
+    setMessages([
+      {
+        id: "1",
+        role: "assistant",
+        content: config.welcomeMessage,
+        timestamp: new Date(),
+      },
+    ]);
   }
 
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Header */}
-      <div className={`flex-shrink-0 bg-gradient-to-r ${config.color} text-white p-6`}>
+      <div
+        className={`flex-shrink-0 bg-gradient-to-r ${config.color} text-white p-6`}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="text-3xl">{config.icon}</div>
@@ -304,20 +315,25 @@ What investment research can I help you with today?`
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
               className={`max-w-3xl rounded-lg p-4 ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-800'
+                message.role === "user"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-800"
               }`}
             >
               <div className="whitespace-pre-wrap">{message.content}</div>
-              <div className={`text-xs mt-2 ${
-                message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
-              }`}>
-                {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <div
+                className={`text-xs mt-2 ${
+                  message.role === "user" ? "text-blue-100" : "text-gray-500"
+                }`}
+              >
+                {message.timestamp.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
               </div>
             </div>
           </div>
@@ -350,10 +366,10 @@ What investment research can I help you with today?`
             disabled={isLoading || !input.trim()}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {isLoading ? '...' : 'Send'}
+            {isLoading ? "..." : "Send"}
           </button>
         </form>
       </div>
     </div>
-  )
+  );
 }

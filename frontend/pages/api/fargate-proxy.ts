@@ -1,28 +1,25 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-// ECS Fargate endpoint for your FastAPI + Strands Agents backend
-const FARGATE_ENDPOINT =
+const PRIVATE_AGENTCORE_ENDPOINT =
+  process.env.AGENTCORE_BASE_URL ||
   process.env.FASTAPI_URL ||
-  "http://SageIn-SageI-FjF1fDChCoaJ-2065237113.us-east-1.elb.amazonaws.com";
+  process.env.NEXT_PUBLIC_FASTAPI_ENDPOINT ||
+  "http://127.0.0.1:8000";
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
   if (req.method !== "POST") return res.status(405).end();
 
   const { agent } = req.query;
   const { text, conversationId } = req.body;
-
-  // Handle agent parameter (can be string or string[])
   const agentType = Array.isArray(agent) ? agent[0] : agent;
 
   try {
-    // Extract JWT token from Authorization header or cookies
     let authToken = req.headers.authorization?.replace("Bearer ", "");
 
     if (!authToken && req.headers.cookie) {
-      // Try to extract from cookies if not in header
       const cookies = req.headers.cookie
         .split(";")
         .reduce((acc: any, cookie) => {
@@ -33,8 +30,7 @@ export default async function handler(
       authToken = cookies.auth_token;
     }
 
-    // Call your ECS Fargate FastAPI backend
-    const fargateResponse = await fetch(`${FARGATE_ENDPOINT}/chat`, {
+    const backendResponse = await fetch(`${PRIVATE_AGENTCORE_ENDPOINT}/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -42,20 +38,25 @@ export default async function handler(
         "X-Agent-Type": agentType || "POLICY_ASSISTANT",
       },
       body: JSON.stringify({
-        text: text,
+        text,
         specialist: agentType,
         conversationId: conversationId || "web-session",
       }),
+      signal: AbortSignal.timeout(
+        Number(process.env.AGENTCORE_CHAT_TIMEOUT_MS || 45000),
+      ),
     });
 
-    if (fargateResponse.ok) {
-      const data = await fargateResponse.json();
+    if (backendResponse.ok) {
+      const data = await backendResponse.json();
 
-      // Return in the format expected by your frontend
-      res.status(200).json({
-        handled_by: data.handled_by || agentType || "POLICY_ASSISTANT",
+      return res.status(200).json({
+        handled_by:
+          data.handled_by || data.agent || agentType || "POLICY_ASSISTANT",
         response:
-          data.response || "I'm here to help with your insurance needs.",
+          data.answer ||
+          data.response ||
+          "I'm here to help with your insurance needs.",
         citations: data.citations || [],
         attachments: data.attachments || [],
         domain: data.domain,
@@ -63,33 +64,28 @@ export default async function handler(
         confidence: data.confidence,
         status: data.status,
       });
-    } else {
-      console.error(
-        "Fargate error:",
-        fargateResponse.status,
-        fargateResponse.statusText
-      );
-      const errorText = await fargateResponse.text();
-      console.error("Fargate error body:", errorText);
-
-      res.status(502).json({
-        error: "Fargate service error",
-        detail: `${fargateResponse.status}: ${fargateResponse.statusText}`,
-        handled_by: agentType || "POLICY_ASSISTANT",
-        response:
-          "I'm experiencing technical difficulties connecting to the backend. Please try again.",
-        citations: [],
-        attachments: [],
-      });
     }
+
+    const errorText = await backendResponse.text();
+    console.error("Private workflow error:", backendResponse.status, errorText);
+
+    return res.status(502).json({
+      error: "Private workflow service error",
+      detail: `${backendResponse.status}: ${backendResponse.statusText}`,
+      handled_by: agentType || "POLICY_ASSISTANT",
+      response:
+        "I'm experiencing technical difficulties connecting to the private workflow. Please try again.",
+      citations: [],
+      attachments: [],
+    });
   } catch (e: any) {
-    console.error("Fargate proxy error:", e);
-    res.status(502).json({
-      error: "Fargate unreachable",
+    console.error("Private workflow proxy error:", e);
+    return res.status(502).json({
+      error: "Private workflow unreachable",
       detail: e?.message,
       handled_by: agentType || "POLICY_ASSISTANT",
       response:
-        "I'm unable to connect to the backend services. Please check your connection and try again.",
+        "I'm unable to connect to the private workflow services. Please check your connection and try again.",
       citations: [],
       attachments: [],
     });

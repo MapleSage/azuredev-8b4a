@@ -5,6 +5,7 @@
 
 import React, { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
+import { publishWorkflowEvent } from "../lib/workflow-memory";
 
 interface UploadedFile {
   id: string;
@@ -58,6 +59,19 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       setFiles(updatedFiles);
       onFilesChange?.(updatedFiles);
 
+      newFiles.forEach((file) => {
+        publishWorkflowEvent({
+          type: "document.upload.queued",
+          title: `Document queued: ${file.name}`,
+          summary: `${file.name} was added for ${specialist} document processing.`,
+          source: "document-upload",
+          workflow: specialist,
+          status: "started",
+          entityId: file.id,
+          payload: { fileName: file.name, fileSize: file.size, fileType: file.type, specialist },
+        });
+      });
+
       // Process each file
       for (const [index, file] of acceptedFiles.entries()) {
         const fileId = newFiles[index].id;
@@ -77,7 +91,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
   const processFile = async (file: File, fileId: string) => {
     try {
-      // Step 1: Get presigned URL for upload
+      // Step 1: Create a governed document intake job
       updateFileStatus(fileId, "uploading", 10);
 
       const uploadResponse = await fetch("/api/document-upload", {
@@ -92,15 +106,26 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       });
 
       if (!uploadResponse.ok) {
-        throw new Error("Failed to get upload URL");
+        throw new Error("Failed to create document intake job");
       }
 
       const { uploadUrl, jobId } = await uploadResponse.json();
 
-      // Step 2: Upload file to S3
+      publishWorkflowEvent({
+        type: "document.upload.prepared",
+        title: `Upload prepared: ${file.name}`,
+        summary: `A secure upload job was created for ${file.name}.`,
+        source: "document-upload",
+        workflow: specialist,
+        status: "processing",
+        entityId: jobId || fileId,
+        payload: { fileName: file.name, fileSize: file.size, fileType: file.type, specialist, jobId },
+      });
+
+      // Step 2: Upload file to the configured private document workflow
       updateFileStatus(fileId, "uploading", 30);
 
-      const s3Response = await fetch(uploadUrl, {
+      const uploadResult = await fetch(uploadUrl, {
         method: "PUT",
         body: file,
         headers: {
@@ -108,7 +133,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         },
       });
 
-      if (!s3Response.ok) {
+      if (!uploadResult.ok) {
         throw new Error("Failed to upload file");
       }
 
@@ -129,10 +154,31 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         throw new Error("Failed to start processing");
       }
 
+      publishWorkflowEvent({
+        type: "document.processing.started",
+        title: `Processing started: ${file.name}`,
+        summary: `${file.name} is being processed for ${specialist}.`,
+        source: "document-upload",
+        workflow: specialist,
+        status: "processing",
+        entityId: jobId,
+        payload: { fileName: file.name, specialist, jobId },
+      });
+
       // Step 4: Poll for completion
       await pollProcessingStatus(fileId, jobId);
     } catch (error) {
       console.error("File processing error:", error);
+      publishWorkflowEvent({
+        type: "document.processing.error",
+        title: `Document error: ${file.name}`,
+        summary: error instanceof Error ? error.message : `Document processing failed for ${file.name}.`,
+        source: "document-upload",
+        workflow: specialist,
+        status: "failed",
+        entityId: fileId,
+        payload: { fileName: file.name, fileSize: file.size, fileType: file.type, specialist },
+      });
       updateFileStatus(fileId, "error", 100);
     }
   };
@@ -156,6 +202,17 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
             data.documentUrl
           );
 
+          publishWorkflowEvent({
+            type: "document.processing.completed",
+            title: `Document completed: ${jobId}`,
+            summary: `Document processing completed for job ${jobId}${data.analysisResults ? " with analysis results available" : ""}.`,
+            source: "document-upload",
+            workflow: specialist,
+            status: "completed",
+            entityId: jobId,
+            payload: { jobId, extractedData: data.extractedData, analysisResults: data.analysisResults, documentUrl: data.documentUrl },
+          });
+
           const completedFile = files.find((f) => f.id === fileId);
           if (completedFile) {
             onFileProcessed?.({
@@ -171,6 +228,16 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         }
 
         if (data.status === "failed") {
+          publishWorkflowEvent({
+            type: "document.processing.failed",
+            title: `Document failed: ${jobId}`,
+            summary: `Document processing failed for job ${jobId}.`,
+            source: "document-upload",
+            workflow: specialist,
+            status: "failed",
+            entityId: jobId,
+            payload: { jobId, data },
+          });
           updateFileStatus(fileId, "error", 100);
           return;
         }
@@ -183,10 +250,30 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         if (attempts < maxAttempts) {
           setTimeout(poll, 10000); // Poll every 10 seconds
         } else {
+          publishWorkflowEvent({
+            type: "document.processing.timeout",
+            title: `Document timed out: ${jobId}`,
+            summary: `Document processing did not complete within the polling window for job ${jobId}.`,
+            source: "document-upload",
+            workflow: specialist,
+            status: "failed",
+            entityId: jobId,
+            payload: { jobId },
+          });
           updateFileStatus(fileId, "error", 100);
         }
       } catch (error) {
-        console.error("Polling error:", error);
+          console.error("Polling error:", error);
+        publishWorkflowEvent({
+          type: "document.processing.poll_error",
+          title: `Document poll error: ${jobId}`,
+          summary: error instanceof Error ? error.message : `Polling failed for job ${jobId}.`,
+          source: "document-upload",
+          workflow: specialist,
+          status: "failed",
+          entityId: jobId,
+          payload: { jobId },
+        });
         updateFileStatus(fileId, "error", 100);
       }
     };

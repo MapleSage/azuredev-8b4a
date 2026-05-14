@@ -10,12 +10,14 @@ export default function HomePage() {
   return (
     <>
       <Head>
-        <title>SageInsure - Enterprise Insurance Platform</title>
+        <title>SageSure - Enterprise Insurance Platform</title>
         <meta
           name="description"
           content="Enterprise-grade AI-powered insurance platform with intelligent chat assistants for claims, underwriting, and policy management."
         />
-        <link rel="icon" href="/sageinsure_favion.png" />
+        <link rel="icon" href="/favicon.png" type="image/png" />
+        <link rel="shortcut icon" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/brand/sagesure-mark.png" />
       </Head>
 
       <EnterpriseAuthGuard>

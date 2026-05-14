@@ -19,7 +19,7 @@ const PRODUCTION_CONFIG = {
   tenantId: "e9394f90-446d-41dd-8c8c-98ac08c5f090",
   redirectUri:
     "https://calm-pond-0b4024e0f-preview.eastus2.1.azurestaticapps.net/auth/callback",
-  apiUrl: "https://sageinsure-backend-api.eastus2.cloudapp.azure.com",
+  apiUrl: "/api",
 };
 
 // Determine if we should use production config
@@ -38,8 +38,8 @@ const requiredEnvVars = {
     : process.env.NEXT_PUBLIC_REDIRECT_URI ||
       "http://localhost:3000/auth/callback",
   apiUrl: useProductionConfig
-    ? PRODUCTION_CONFIG.apiUrl
-    : process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+    ? process.env.NEXT_PUBLIC_API_URL || PRODUCTION_CONFIG.apiUrl
+    : process.env.NEXT_PUBLIC_API_URL || "/api",
 };
 
 // Check for missing environment variables
@@ -147,7 +147,7 @@ export const graphRequest = {
  * Environment-specific configuration
  */
 export const environmentConfig = {
-  apiBaseUrl: requiredEnvVars.apiUrl || "http://localhost:8000",
+  apiBaseUrl: requiredEnvVars.apiUrl || "/api",
   isProduction,
   isDevelopment,
   useProductionConfig,

@@ -140,10 +140,14 @@ export const EnterpriseAuthGuard: React.FC<EnterpriseAuthGuardProps> = ({
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-xl mb-4 animate-pulse">
-            <span className="text-white font-bold text-2xl">SI</span>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/30 bg-white p-2 shadow-lg animate-pulse">
+            <img
+              src="/brand/sagesure-mark.png"
+              alt="SageSure"
+              className="h-10 w-10 object-contain"
+            />
           </div>
-          <div className="text-white text-lg mb-2">SageInsure</div>
+          <div className="text-white text-lg mb-2">SageSure</div>
           <div className="text-blue-200">Verifying credentials...</div>
           <div className="mt-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto"></div>

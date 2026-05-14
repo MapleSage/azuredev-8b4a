@@ -1,17 +1,13 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-// Direct ALB endpoints for your ECS services
-const ALB_ENDPOINTS = {
-  // Replace these with your actual ALB DNS names
-  SAGEINSURE_FASTAPI:
-    "http://SageInsureFargateService-XXXXX.us-east-1.elb.amazonaws.com",
-  STRANDS_AGENT:
-    "http://StrandsAgentFargateService-XXXXX.us-east-1.elb.amazonaws.com",
-};
+const PRIVATE_AGENTCORE_ENDPOINT =
+  process.env.AGENTCORE_BASE_URL ||
+  process.env.NEXT_PUBLIC_FASTAPI_ENDPOINT ||
+  "http://127.0.0.1:8000";
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -24,53 +20,48 @@ export default async function handler(
       return res.status(400).json({ error: "Message is required" });
     }
 
-    console.log("Direct ALB call with:", { message, sessionId, specialist });
-
-    // Route to appropriate ALB based on specialist
-    let targetEndpoint = ALB_ENDPOINTS.STRANDS_AGENT; // Default to Strands Agent
-
-    // You can add routing logic here if you have different ALBs for different specialists
-    // For now, using Strands Agent for all requests
-
     const payload = {
-      inputText: message,
-      sessionId: sessionId || `session-${Date.now()}`,
-      specialist: specialist || "GENERAL",
+      text: message,
+      conversationId: sessionId || `session-${Date.now()}`,
+      specialist: specialist || "POLICY_ASSISTANT",
     };
 
-    console.log(`Calling ALB directly: ${targetEndpoint}`);
-
-    // Call the ALB directly
-    const albResponse = await fetch(`${targetEndpoint}/invoke`, {
+    const backendResponse = await fetch(`${PRIVATE_AGENTCORE_ENDPOINT}/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: req.headers.authorization || "",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(
+        Number(process.env.AGENTCORE_CHAT_TIMEOUT_MS || 45000),
+      ),
     });
 
-    console.log("ALB response status:", albResponse.status);
-
-    if (!albResponse.ok) {
-      const errorText = await albResponse.text();
-      console.error("ALB error:", errorText);
-      return res.status(albResponse.status).json({
-        error: `ALB error: ${errorText}`,
+    if (!backendResponse.ok) {
+      const errorText = await backendResponse.text();
+      return res.status(backendResponse.status).json({
+        error: `Private workflow error: ${errorText}`,
       });
     }
 
-    const responseData = await albResponse.json();
-    console.log("ALB response data:", responseData);
+    const responseData = await backendResponse.json();
 
     return res.status(200).json({
       response:
-        responseData.response || responseData.message || "Response received",
-      sessionId: responseData.sessionId || sessionId,
-      specialist: specialist || "GENERAL",
-      source: "ALB_DIRECT",
+        responseData.answer ||
+        responseData.response ||
+        responseData.message ||
+        "Response received",
+      sessionId:
+        responseData.conversation_id || responseData.sessionId || sessionId,
+      specialist: specialist || responseData.agent || "POLICY_ASSISTANT",
+      source: "PRIVATE_AGENTCORE",
+      confidence: responseData.confidence,
+      status: responseData.status,
     });
   } catch (error) {
-    console.error("ALB Direct API error:", error);
+    console.error("Private backend direct API error:", error);
     return res.status(500).json({
       error: "Internal server error",
       details: error instanceof Error ? error.message : "Unknown error",

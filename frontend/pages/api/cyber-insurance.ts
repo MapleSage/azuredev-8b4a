@@ -1,207 +1,151 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
+import type { NextApiRequest, NextApiResponse } from "next";
 
-// Use the main chat API for cyber insurance queries
-const FASTAPI_ENDPOINT = process.env.NEXT_PUBLIC_FASTAPI_ENDPOINT || 
-  "http://SageIn-SageI-FjF1fDChCoaJ-2065237113.us-east-1.elb.amazonaws.com"
+const FASTAPI_ENDPOINT =
+  process.env.NEXT_PUBLIC_FASTAPI_ENDPOINT || "http://127.0.0.1:8000";
 
 interface CyberInsuranceRequest {
-  action: 'store_account' | 'get_quote' | 'chat'
-  accountId?: string
-  region?: string
-  externalId?: string
-  message?: string
-}
-
-interface CyberQuote {
-  quote: string
-  findings: {
-    critical: number
-    high: number
-    medium: number
-    low: number
-    informational: number
-  }
-  riskAssessment?: {
-    riskLevel: string
-    totalRiskScore: number
-    recommendations: string[]
-  }
-  coverage?: {
-    dataBreachResponse: string
-    businessInterruption: string
-    cyberExtortion: string
-    regulatoryFines: string
-  }
+  action: "store_account" | "get_quote" | "chat";
+  accountId?: string;
+  region?: string;
+  message?: string;
 }
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const { action, accountId, region, externalId, message }: CyberInsuranceRequest = req.body
+    const { action, accountId, region, message }: CyberInsuranceRequest =
+      req.body;
 
-    if (action === 'chat') {
-      // Route to cyber specialist through main chat API
+    if (action === "chat") {
       const response = await fetch(`${FASTAPI_ENDPOINT}/chat`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': req.headers.authorization || ''
+          "Content-Type": "application/json",
+          Authorization: req.headers.authorization || "",
         },
         body: JSON.stringify({
-          text: message || 'I need help with cyber insurance',
-          specialist: 'CYBER_SPECIALIST',
-          conversationId: `cyber-${Date.now()}`
-        })
-      })
+          text: message || "I need help with cyber insurance",
+          specialist: "CYBER_SPECIALIST",
+          conversationId: `cyber-${Date.now()}`,
+        }),
+        signal: AbortSignal.timeout(
+          Number(process.env.AGENTCORE_CHAT_TIMEOUT_MS || 45000),
+        ),
+      });
 
       if (!response.ok) {
-        throw new Error(`Chat API error: ${response.status}`)
+        throw new Error(`Chat API error: ${response.status}`);
       }
 
-      const data = await response.json()
-      return res.status(200).json(data)
+      const data = await response.json();
+      return res.status(200).json(data);
     }
 
     if (!accountId) {
-      return res.status(400).json({ error: 'Account ID is required' })
+      return res.status(400).json({ error: "Security profile ID is required" });
     }
 
-    if (action === 'store_account') {
-      // Enhanced account storage with Security Hub integration
-      console.log(`Storing cyber insurance account: ${accountId}, ${region}, ${externalId}`)
-      
-      // Generate CloudFormation template URL for real deployment
-      const templateUrl = `https://s3.amazonaws.com/sageinsure-cyber-templates/customer-template.yaml`
-      const partnerAccountId = '767398007438' // SageInsure account
-      const snsTopicArn = `arn:aws:sns:${region}:${partnerAccountId}:SageInsureCyberQuoteTopic`
-      
-      res.status(200).json({ 
-        success: true, 
-        message: 'Account details stored successfully',
-        cloudFormationUrl: `https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/create/review?stackName=SageInsureCyberInsuranceStack&templateURL=${templateUrl}&param_PartnerAccountId=${partnerAccountId}&param_ExternalId=${externalId}&param_SnsTopicArn=${snsTopicArn}`,
+    if (action === "store_account") {
+      console.log(`Registered cyber evidence packet: ${accountId}, ${region}`);
+      return res.status(200).json({
+        success: true,
+        message: "Security evidence packet registered successfully",
         nextSteps: [
-          'Deploy the CloudFormation stack in your AWS account',
-          'Wait for Security Hub findings to be processed',
-          'Return to get your personalized quote'
-        ]
-      })
-
-    } else if (action === 'get_quote') {
-      // Enhanced quote with real Security Hub integration
-      const quote = await generateEnhancedQuote(accountId, region)
-      res.status(200).json(quote)
-
-    } else {
-      res.status(400).json({ error: 'Invalid action' })
+          "Attach questionnaire, posture report, or incident evidence",
+          "Review critical and high findings with the broker or underwriter",
+          "Generate a guided quote for human review",
+        ],
+      });
     }
 
+    if (action === "get_quote") {
+      const quote = generateEnhancedQuote(accountId);
+      return res.status(200).json(quote);
+    }
+
+    return res.status(400).json({ error: "Invalid action" });
   } catch (error) {
-    console.error('Cyber Insurance API error:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error("Cyber Insurance API error:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
 
-async function generateEnhancedQuote(accountId: string, region: string = 'us-east-1') {
-  try {
-    // Try to get real Security Hub findings (mock for now)
-    const findings = await getSecurityHubFindings(accountId, region)
-    
-    // Calculate quote based on findings
-    const totalCost = 
-      findings.critical * 1000 +
-      findings.high * 500 +
-      findings.medium * 100 +
-      findings.low * 10 +
-      findings.informational * 1
+function generateEnhancedQuote(profileId: string) {
+  const findings = getSecurityFindings(profileId);
+  const totalCost =
+    findings.critical * 1000 +
+    findings.high * 500 +
+    findings.medium * 100 +
+    findings.low * 10 +
+    findings.informational;
 
-    const basePremium = 50000
-    const riskMultiplier = 1 + (totalCost / 100000)
-    const finalPremium = Math.round(basePremium * riskMultiplier)
+  const basePremium = 50000;
+  const riskMultiplier = 1 + totalCost / 100000;
+  const finalPremium = Math.round(basePremium * riskMultiplier);
 
-    return {
-      quote: `$${finalPremium.toLocaleString()} annual premium`,
-      findings,
-      riskAssessment: {
-        riskLevel: totalCost > 10000 ? 'HIGH' : totalCost > 5000 ? 'MEDIUM' : 'LOW',
-        totalRiskScore: totalCost,
-        recommendations: generateRecommendations(findings)
-      },
-      coverage: {
-        dataBreachResponse: '$1,000,000',
-        businessInterruption: '$500,000',
-        cyberExtortion: '$250,000',
-        regulatoryFines: '$100,000'
-      }
-    }
-  } catch (error) {
-    console.error('Error generating quote:', error)
-    // Fallback to mock quote
-    return generateMockQuote(accountId)
-  }
+  return {
+    quote: `$${finalPremium.toLocaleString()} annual premium`,
+    findings,
+    riskAssessment: {
+      riskLevel:
+        totalCost > 10000 ? "HIGH" : totalCost > 5000 ? "MEDIUM" : "LOW",
+      totalRiskScore: totalCost,
+      recommendations: generateRecommendations(findings),
+    },
+    coverage: {
+      dataBreachResponse: "$1,000,000",
+      businessInterruption: "$500,000",
+      cyberExtortion: "$250,000",
+      regulatoryFines: "$100,000",
+    },
+  };
 }
 
-async function getSecurityHubFindings(accountId: string, region: string) {
-  // Mock Security Hub findings - in production this would call AWS Security Hub
-  const seed = accountId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  
+function getSecurityFindings(profileId: string) {
+  const seed = profileId
+    .split("")
+    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
+
   return {
     critical: Math.floor((seed % 3) + 1),
     high: Math.floor((seed % 8) + 3),
     medium: Math.floor((seed % 15) + 8),
     low: Math.floor((seed % 25) + 15),
-    informational: Math.floor((seed % 40) + 25)
-  }
+    informational: Math.floor((seed % 40) + 25),
+  };
 }
 
 function generateRecommendations(findings: any) {
-  const recommendations = []
-  
+  const recommendations = [];
+
   if (findings.critical > 0) {
-    recommendations.push('Address critical security findings immediately')
+    recommendations.push(
+      "Address critical security findings before binding coverage",
+    );
   }
   if (findings.high > 5) {
-    recommendations.push('Implement multi-factor authentication across all services')
+    recommendations.push(
+      "Confirm multi-factor authentication and privileged access controls",
+    );
   }
   if (findings.medium > 10) {
-    recommendations.push('Enable AWS CloudTrail and Config for better monitoring')
-  }
-  
-  recommendations.push('Regular security assessments and penetration testing')
-  recommendations.push('Employee cybersecurity training program')
-  
-  return recommendations
-}
-
-function generateMockQuote(accountId: string) {
-  const seed = accountId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  
-  const findings = {
-    critical: Math.floor((seed % 5) + 1),
-    high: Math.floor((seed % 10) + 5),
-    medium: Math.floor((seed % 20) + 10),
-    low: Math.floor((seed % 30) + 20),
-    informational: Math.floor((seed % 50) + 30)
+    recommendations.push(
+      "Document logging, monitoring, backup, and incident-response controls",
+    );
   }
 
-  const totalCost = 
-    findings.critical * 1000 +
-    findings.high * 500 +
-    findings.medium * 100 +
-    findings.low * 10 +
-    findings.informational * 1
+  recommendations.push(
+    "Schedule periodic security assessment and evidence refresh",
+  );
+  recommendations.push(
+    "Prepare employee awareness and breach-response training evidence",
+  );
 
-  const basePremium = 50000
-  const riskMultiplier = 1 + (totalCost / 100000)
-  const finalPremium = Math.round(basePremium * riskMultiplier)
-
-  return {
-    quote: `$${finalPremium.toLocaleString()} annual premium`,
-    findings
-  }
+  return recommendations;
 }

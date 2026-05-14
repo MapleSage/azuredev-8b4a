@@ -1,6 +1,6 @@
 /**
  * Document Status API
- * Checks processing status and returns results
+ * Returns SageSure-style document workflow status and sample analysis results.
  */
 
 import { NextApiRequest, NextApiResponse } from "next";
@@ -15,12 +15,11 @@ interface StatusResponse {
   error?: string;
 }
 
-// Mock job storage (in production, use DynamoDB)
 const jobStorage = new Map<string, StatusResponse>();
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<StatusResponse | { error: string }>
+  res: NextApiResponse<StatusResponse | { error: string }>,
 ) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -33,42 +32,38 @@ export default async function handler(
       return res.status(400).json({ error: "Invalid job ID" });
     }
 
-    // Check job status
     let jobStatus = jobStorage.get(jobId);
 
     if (!jobStatus) {
-      // Initialize job if not found (first status check)
       jobStatus = {
         jobId,
         status: "processing",
-        progress: 25,
+        progress: 35,
       };
 
-      // Simulate processing completion after random delay
-      const processingTime = Math.random() * 30000 + 15000; // 15-45 seconds
+      const processingTime = Math.random() * 12000 + 8000;
 
       setTimeout(() => {
         const completedStatus: StatusResponse = {
           jobId,
           status: "completed",
           progress: 100,
-          extractedData: generateMockExtractedData(),
-          analysisResults: generateMockAnalysisResults(),
+          extractedData: generateExtractedData(jobId),
+          analysisResults: generateAnalysisResults(jobId),
           documentUrl: generateDocumentUrl(jobId),
         };
 
         jobStorage.set(jobId, completedStatus);
-        console.log(`✅ Job ${jobId} completed`);
+        console.log(`✅ Document workflow ${jobId} completed`);
       }, processingTime);
 
       jobStorage.set(jobId, jobStatus);
     }
 
-    // Simulate progress updates for processing jobs
     if (jobStatus.status === "processing" && jobStatus.progress < 95) {
       jobStatus.progress = Math.min(
-        jobStatus.progress + Math.random() * 10,
-        95
+        jobStatus.progress + Math.random() * 14,
+        95,
       );
       jobStorage.set(jobId, jobStatus);
     }
@@ -82,113 +77,82 @@ export default async function handler(
   }
 }
 
-function generateMockExtractedData() {
-  const documentTypes = [
-    "Auto Insurance Claim",
-    "Life Insurance Application",
-    "Property Damage Report",
-    "Medical Records",
-    "Financial Statement",
-    "Security Assessment",
+function generateExtractedData(jobId: string) {
+  const scenarios = [
+    {
+      documentType: "Property FNOL Evidence Packet",
+      keyFields: {
+        claimNumber: `CLM-${jobId.slice(-6).toUpperCase()}`,
+        incidentDate: "2026-05-12",
+        policyNumber: "SSP-PROP-884210",
+        damageDescription:
+          "Water intrusion and ceiling damage after burst pipe",
+        estimatedCost: "$18,500",
+        insuredName: "Mason Property Group",
+        incidentLocation: "Austin, TX",
+      },
+      confidence: 0.92,
+    },
+    {
+      documentType: "Commercial Broker Slip",
+      keyFields: {
+        applicantName: "Harborline Logistics",
+        coverageRequested: "$5.2M property / $2M liability",
+        priorLosses: "2 water intrusion claims in 36 months",
+        locations: "4 coastal warehouse sites",
+        producer: "Northstar Brokerage",
+        referralReason: "Requested limit exceeds standard authority",
+      },
+      confidence: 0.9,
+    },
+    {
+      documentType: "Policy Review Packet",
+      keyFields: {
+        policyNumber: "SSP-HOME-421901",
+        renewalDate: "2026-06-30",
+        coverageGap: "Roof wear exclusion requires review",
+        deductible: "$2,500 wind/hail",
+        recommendation: "Prepare plain-language customer explainer",
+      },
+      confidence: 0.88,
+    },
   ];
 
-  const randomType =
-    documentTypes[Math.floor(Math.random() * documentTypes.length)];
-
-  switch (randomType) {
-    case "Auto Insurance Claim":
-      return {
-        documentType: randomType,
-        keyFields: {
-          claimNumber: `CLM-${Date.now().toString().slice(-6)}`,
-          incidentDate: "2024-01-15",
-          policyNumber: "POL-AUTO-789456",
-          vehicleYear: "2020",
-          vehicleMake: "Honda",
-          vehicleModel: "Accord",
-          damageDescription: "Front bumper damage from collision",
-          estimatedCost: "$8,500",
-          driverName: "John Smith",
-          incidentLocation: "Main St & Oak Ave, Springfield",
-        },
-        confidence: 0.92,
-      };
-
-    case "Life Insurance Application":
-      return {
-        documentType: randomType,
-        keyFields: {
-          applicantName: "Sarah Johnson",
-          dateOfBirth: "1985-03-15",
-          ssn: "***-**-1234",
-          policyAmount: "$500,000",
-          beneficiary: "Michael Johnson (Spouse)",
-          medicalHistory: "No significant conditions reported",
-          occupation: "Software Engineer",
-          smoker: "No",
-          height: "5'6\"",
-          weight: "140 lbs",
-        },
-        confidence: 0.89,
-      };
-
-    case "Property Damage Report":
-      return {
-        documentType: randomType,
-        keyFields: {
-          propertyAddress: "123 Elm Street, Springfield, IL",
-          damageType: "Water damage from burst pipe",
-          incidentDate: "2024-01-20",
-          estimatedRepairCost: "$15,000",
-          policyNumber: "POL-HOME-456789",
-          contactPhone: "(555) 123-4567",
-          emergencyServices: "Fire department responded",
-          temporaryRepairs: "Plumbing shut off, tarps installed",
-        },
-        confidence: 0.87,
-      };
-
-    default:
-      return {
-        documentType: randomType,
-        keyFields: {
-          documentDate: new Date().toISOString().split("T")[0],
-          pageCount: Math.floor(Math.random() * 10) + 1,
-          wordCount: Math.floor(Math.random() * 2000) + 500,
-          language: "English",
-        },
-        confidence: 0.85,
-      };
-  }
+  return scenarios[Math.floor(Math.random() * scenarios.length)];
 }
 
-function generateMockAnalysisResults() {
+function generateAnalysisResults() {
   return {
-    riskScore: Math.floor(Math.random() * 10) + 1,
+    riskScore: Math.floor(Math.random() * 42) + 48,
     processingRecommendation: getRandomRecommendation(),
     flags: getRandomFlags(),
     keyInsights: [
-      "Document appears authentic and complete",
-      "All required fields are present",
-      "No obvious discrepancies detected",
+      "Document is readable and mapped to an insurance workflow",
+      "Required identifiers were extracted with high confidence",
+      "Human review remains recommended before customer-facing or regulated action",
     ],
     nextSteps: [
-      "Route to appropriate specialist for review",
-      "Verify information against policy records",
-      "Schedule follow-up if needed",
+      "Route to the assigned claims or underwriting queue",
+      "Verify extracted details against policy records",
+      "Request missing evidence before submission if any field is uncertain",
     ],
-    confidence: Math.random() * 0.2 + 0.8, // 0.8 - 1.0
+    governance: {
+      auditLogged: true,
+      humanApprovalRecommended: true,
+      dataBoundary: "tenant-scoped-workflow",
+    },
+    confidence: Math.random() * 0.15 + 0.84,
   };
 }
 
 function getRandomRecommendation() {
   const recommendations = [
-    "Approve for standard processing",
+    "Ready for standard workflow review",
     "Requires additional documentation",
     "Escalate to senior underwriter",
-    "Schedule inspection",
-    "Request medical examination",
-    "Verify with third parties",
+    "Schedule inspection or adjuster follow-up",
+    "Prepare customer-facing explanation",
+    "Verify with policy administration system",
   ];
 
   return recommendations[Math.floor(Math.random() * recommendations.length)];
@@ -198,14 +162,14 @@ function getRandomFlags() {
   const allFlags = [
     "High claim amount",
     "Recent policy inception",
-    "Multiple claims history",
+    "Multiple prior losses",
     "Incomplete documentation",
-    "Requires verification",
+    "Requires policy verification",
     "Potential fraud indicators",
   ];
 
-  const numFlags = Math.floor(Math.random() * 3); // 0-2 flags
-  const selectedFlags = [];
+  const selectedFlags: string[] = [];
+  const numFlags = Math.floor(Math.random() * 3);
 
   for (let i = 0; i < numFlags; i++) {
     const randomFlag = allFlags[Math.floor(Math.random() * allFlags.length)];
@@ -218,6 +182,5 @@ function getRandomFlags() {
 }
 
 function generateDocumentUrl(jobId: string): string {
-  // In production, return actual S3 presigned URL
-  return `https://sageinsure-documents.s3.amazonaws.com/processed/${jobId}/document.pdf?expires=3600`;
+  return `/api/document-status/${encodeURIComponent(jobId)}?artifact=document`;
 }

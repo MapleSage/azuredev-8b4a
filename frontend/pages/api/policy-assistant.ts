@@ -27,7 +27,7 @@ export default async function handler(
       })
     }
 
-    // Using comprehensive policy assistant with existing Cognito integration
+    // Using the greenfield SageSure policy workflow response model
     const mockResponse = generatePolicyResponse(userQuery)
     res.status(200).json({ response: mockResponse })
 
@@ -63,13 +63,13 @@ Hello! I'm Felix, your dedicated claims specialist. Let me guide you through the
 • Contact information for other parties involved
 
 **⚡ SageInsure Advantage:**
-• **AI-Powered Processing**: 60% faster than traditional methods
+• **Workflow-Assisted Processing**: faster intake with human review controls
 • **Real-time Updates**: Track your claim status 24/7
-• **Multi-Agent Support**: Claims Manager, Underwriter, and Customer Service agents
+• **Specialist Support**: Claims, underwriting, and service workflows
 • **Vendor Coordination**: Automatic scheduling with preferred repair networks
 
 **🎯 Processing Timeline:**
-• Initial review: 2-4 hours (AI-assisted)
+• Initial review: 2-4 hours (workflow-assisted)
 • Adjuster assignment: Same day
 • Settlement decision: 3-5 business days
 
@@ -106,13 +106,13 @@ I'm here to help with all your payment and billing questions:
 • **Traditional Methods**: Check, bank transfer, credit/debit cards
 
 **📱 Smart Payment Features:**
-• **AI Payment Reminders**: Personalized notifications
-• **Premium Optimization**: AI-suggested payment schedules
+• **Smart Payment Reminders**: Personalized notifications
+• **Premium Optimization**: guided payment schedules
 • **Automatic Adjustments**: Real-time premium updates based on usage
 • **Multi-Policy Discounts**: Bundling savings across all your policies
 
 **🧮 Premium Calculation Factors:**
-• **Risk Assessment**: AI-powered risk modeling
+• **Risk Assessment**: governed risk modeling
 • **Claims History**: Your personal claims record
 • **Coverage Selections**: Limits, deductibles, and add-ons
 • **Location Factors**: Geographic risk considerations
@@ -131,13 +131,11 @@ You have access to our comprehensive multi-agent support system:
 • **Claims Manager Agent**: Handles all claim-related inquiries and processing
 • **Underwriter Agent**: Policy analysis, risk assessment, and coverage recommendations
 • **Customer Service Agent**: General support, account management, and policy changes
-• **Research Assistant Agent**: Life science research, drug discovery, and clinical trial insights
-
 **🏢 Business Support Agents:**
 • **CRM Agent**: Customer relationship management and account optimization
-• **HR Assistant**: Employee benefits and group policy management
+• **Governance Workspace**: Users, approvals, and audit controls
 • **Marketing Agent**: Insurance product information and promotional offers
-• **Investment Research Agent**: Financial planning and investment-linked insurance products
+• **Analytics Workspace**: Portfolio, SLA, and performance insights
 
 **📞 Contact Methods:**
 • **Live Chat**: Available 24/7 through any tab in our platform
@@ -148,7 +146,7 @@ You have access to our comprehensive multi-agent support system:
 Which agent or support channel would work best for your current needs?`
   }
 
-  return `🔐 **Cognito Auth** | 🛡️ **Bedrock Guardrails** | 💾 **DynamoDB Sessions**
+  return `🔐 **Entra Identity** | 🛡️ **Policy Controls** | 💾 **Tenant Sessions**
 
 👋 **Welcome to your Insurance Policy AI Assistant!**
 
@@ -172,7 +170,7 @@ I'm here to help you understand your insurance coverage 24/7. I can:
 • Provide personalized responses based on your specific policy
 
 **🛡️ Secure & Reliable:**
-• Protected by AWS Guardrails for responsible AI
+• Protected by governed policy controls and audit trails
 • Grounded responses with factual citations
 • Your personal policy information is kept secure
 

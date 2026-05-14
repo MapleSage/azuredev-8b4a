@@ -33,8 +33,8 @@ export class RedirectLoopDetector {
 
   constructor(config?: Partial<RedirectLoopDetectorConfig>) {
     this.config = {
-      maxAttempts: 8, // Increased from 5 to be less aggressive
-      timeWindowMs: 10 * 60 * 1000, // Increased to 10 minutes
+      maxAttempts: 12, // Keep genuine loop protection without blocking normal retries
+      timeWindowMs: 5 * 60 * 1000, // Shorter local-dev recovery window
       storageKey: "msal_redirect_loop_detector",
       enableLogging: process.env.NODE_ENV === "development",
       ...config,
@@ -241,24 +241,6 @@ export class RedirectLoopDetector {
     // Simple detection: too many attempts in time window
     if (attempts.length >= this.config.maxAttempts) {
       return true;
-    }
-
-    // Advanced detection: rapid successive attempts
-    if (attempts.length >= 3) {
-      const recentAttempts = attempts.slice(-3);
-      const timeDiffs = [];
-
-      for (let i = 1; i < recentAttempts.length; i++) {
-        timeDiffs.push(
-          recentAttempts[i].timestamp - recentAttempts[i - 1].timestamp
-        );
-      }
-
-      // If all recent attempts are within 10 seconds of each other, it's likely a loop
-      const rapidThreshold = 10 * 1000; // 10 seconds
-      if (timeDiffs.every((diff) => diff < rapidThreshold)) {
-        return true;
-      }
     }
 
     return false;

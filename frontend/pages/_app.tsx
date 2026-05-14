@@ -1,4 +1,5 @@
 import "../styles/globals.css";
+import Head from "next/head";
 import { AuthProvider } from "../lib/msal-auth-context";
 import { useRouter } from "next/router";
 import { useEffect } from "react";
@@ -35,7 +36,7 @@ function LoadingScreen() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading SageInsure...</p>
+        <p className="text-gray-600">Loading SageSure...</p>
       </div>
     </div>
   );
@@ -69,10 +70,18 @@ export default function MyApp({ Component, pageProps }: any) {
   }
 
   return (
-    <AuthProvider>
-      <RouteGuard>
-        <Component {...pageProps} />
-      </RouteGuard>
-    </AuthProvider>
+    <>
+      <Head>
+        <meta name="theme-color" content="#1e3a8a" />
+        <link rel="icon" href="/favicon.png" type="image/png" />
+        <link rel="shortcut icon" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/brand/sagesure-mark.png" />
+      </Head>
+      <AuthProvider>
+        <RouteGuard>
+          <Component {...pageProps} />
+        </RouteGuard>
+      </AuthProvider>
+    </>
   );
 }

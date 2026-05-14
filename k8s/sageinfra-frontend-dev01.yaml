@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sageinfra-frontend
+  namespace: sageinfra-new-agents
+  labels:
+    app.kubernetes.io/name: sageinfra-frontend
+    app.kubernetes.io/part-of: sageinfra
+    app.kubernetes.io/environment: dev01
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sageinfra-frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sageinfra-frontend
+        app.kubernetes.io/part-of: sageinfra
+        app.kubernetes.io/environment: dev01
+    spec:
+      containers:
+        - name: sageinfra-frontend
+          image: sageinfranewdev01.azurecr.io/sageinfra-frontend:dev01
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+            - name: HOSTNAME
+              value: "0.0.0.0"
+            - name: SAGEINFRA_AGENTCORE_URL
+              value: http://sageinfra-agentcore
+            - name: AGENTCORE_CHAT_TIMEOUT_MS
+              value: "45000"
+            - name: NEXT_PUBLIC_DEVELOPMENT_MODE
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sageinfra-frontend
+  namespace: sageinfra-new-agents
+  labels:
+    app.kubernetes.io/name: sageinfra-frontend
+    app.kubernetes.io/part-of: sageinfra
+    app.kubernetes.io/environment: dev01
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: sageinfra-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

@@ -31,12 +31,12 @@ interface TabConfig {
 
 const TabConfigs: Record<Specialist, TabConfig> = {
   CLAIMS_CHAT: {
-    title: "Claims Chat",
-    icon: "💬",
-    description: "General claims assistance",
+    title: "Claims Workspace",
+    icon: "⚡",
+    description: "Claim triage, coverage guidance, summaries, and next-step planning",
     endpoint: "claims-chat",
-    knowledgeBase: "GENERAL",
-    features: ["claim-creation", "status-tracking", "document-upload"],
+    knowledgeBase: "CLAIMS",
+    features: ["coverage review", "claim summary", "missing document follow-up", "adjuster notes"],
   },
   UNDERWRITING: {
     title: "Underwriting",
@@ -63,20 +63,20 @@ const TabConfigs: Record<Specialist, TabConfig> = {
     features: ["breach-analysis", "risk-scoring", "security-assessment"],
   },
   FNOL_PROCESSOR: {
-    title: "FNOL Processor",
-    icon: "📄",
-    description: "First Notice of Loss processing",
+    title: "FNOL Intake",
+    icon: "📥",
+    description: "Loss intake, evidence review, missing information, and adjuster handoff",
     endpoint: "fnol",
     knowledgeBase: "FNOL",
-    features: ["incident-reporting", "document-processing", "claim-initiation"],
+    features: ["loss facts", "evidence review", "missing info", "adjuster handoff"],
   },
   CLAIMS_LIFECYCLE: {
-    title: "Claims Lifecycle",
-    icon: "📊",
-    description: "Event-driven claims management",
+    title: "Claim Lifecycle",
+    icon: "⚡",
+    description: "Claim status, coverage review, communications, and resolution planning",
     endpoint: "lifecycle",
-    knowledgeBase: "LIFECYCLE",
-    features: ["workflow-management", "status-tracking", "automation"],
+    knowledgeBase: "CLAIMS",
+    features: ["status review", "coverage checkpoint", "customer update", "settlement planning"],
   },
   POLICY_ASSISTANT: {
     title: "Policy Assistant",
@@ -168,7 +168,7 @@ const IntentRules: IntentRule[] = [
   },
   {
     id: "CLAIMS_LIFECYCLE",
-    must: [/workflow|lifecycle|automation|event.*driven|process.*management/],
+    must: [/workflow|lifecycle|claim.*status|coverage.*review|customer.*update|settlement|process.*management/],
     avoid: [],
     confidence: 0.7,
   },
@@ -338,6 +338,98 @@ class StrandsClient {
 
 interface ChatAppProps {
   initialSpecialist?: string;
+}
+
+function getWelcomeMessage(specialist: Specialist) {
+  if (specialist === "CLAIMS_CHAT") {
+    return [
+      "Claims workspace ready.",
+      "",
+      "Use this screen when you need to understand a claim, prepare an adjuster handoff, explain coverage next steps, or identify what information is missing.",
+      "",
+      "Good starting points:",
+      "• Summarize this claim for an adjuster",
+      "• What documents are still needed?",
+      "• Draft a customer update in plain language",
+      "• Check whether this looks like FNOL, status, coverage, or escalation work",
+    ].join("\n");
+  }
+
+  return [
+    `${TabConfigs[specialist].title} ready.`,
+    "",
+    TabConfigs[specialist].description,
+    "",
+    "Common tasks:",
+    ...TabConfigs[specialist].features.map((feature) => `• ${feature}`),
+  ].join("\n");
+}
+
+function ClaimsAssistantPanel() {
+  const playbooks = [
+    "Coverage and deductible explanation",
+    "Missing document checklist",
+    "Adjuster summary",
+    "Customer status update",
+    "Escalation / SLA risk note",
+  ];
+
+  const contextSignals = [
+    { label: "Backend", value: "dev01 AgentCore", tone: "teal" },
+    { label: "Scope", value: "Claims + FNOL context", tone: "slate" },
+    { label: "Memory", value: "Session workflow events", tone: "teal" },
+  ];
+
+  return (
+    <aside className="hidden w-80 shrink-0 flex-col border-l border-slate-200 bg-white xl:flex">
+      <div className="border-b border-slate-100 p-4">
+        <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Claims utility</div>
+        <h3 className="mt-1 text-lg font-bold text-[#24384A]">What this screen is for</h3>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          A working claim assistant, not a pipeline diagram. It should help staff turn claim context into decisions, notes, customer updates, and handoffs.
+        </p>
+      </div>
+
+      <div className="space-y-4 overflow-y-auto p-4">
+        <div className="rounded-xl border border-[#D5EEF1] bg-[#F0FAFB] p-4">
+          <div className="text-sm font-bold text-[#075E6D]">Recommended use</div>
+          <p className="mt-1 text-sm text-slate-600">
+            Paste a claim note, policy excerpt, FNOL result, or customer message. Ask for a summary, next action, or missing-info checklist.
+          </p>
+        </div>
+
+        <div>
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Playbooks</div>
+          <div className="space-y-2">
+            {playbooks.map((playbook) => (
+              <button key={playbook} className="w-full rounded-lg border border-slate-200 bg-white p-3 text-left text-sm font-semibold text-slate-700 transition hover:border-[#BEE7EA] hover:bg-[#F0FAFB]">
+                {playbook}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Live context</div>
+          <div className="space-y-2">
+            {contextSignals.map((signal) => (
+              <div key={signal.label} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <span className="font-semibold text-slate-500">{signal.label}</span>
+                <span className="font-bold text-[#007A8A]">{signal.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-[#FFE1D6] bg-[#FFF7F4] p-4 text-sm text-slate-700">
+          <div className="font-bold text-[#C85537]">Handoff standard</div>
+          <p className="mt-1">
+            Every answer should leave a clear operator action: assign, request documents, update the customer, escalate, or close the loop.
+          </p>
+        </div>
+      </div>
+    </aside>
+  );
 }
 
 export default function ChatApp({
@@ -675,8 +767,8 @@ export default function ChatApp({
           `🔄 Restored ${existingMessages.length} messages for ${TabConfigs[specialist].title}`
         );
       } else {
-        // Create new conversation with welcome message
-        const welcomeMessage = `🚀 **${TabConfigs[specialist].title} Active**\n\n${TabConfigs[specialist].description}\n\n**Specialized Features:**\n${TabConfigs[specialist].features.map((f) => `✅ ${f.replace("-", " ")}`).join("\n")}\n\nHow can I help you with ${TabConfigs[specialist].title.toLowerCase()}?`;
+        // Create new conversation with a useful, workflow-oriented welcome message.
+        const welcomeMessage = getWelcomeMessage(specialist);
 
         // Add welcome message to session
         sessionManager.addMessage(
@@ -751,6 +843,8 @@ export default function ChatApp({
     );
   }
 
+  const isClaimsWorkspace = activeTab === "CLAIMS_CHAT";
+
   return (
     <div className="h-full flex bg-white">
       <div className="w-80 flex-shrink-0">
@@ -764,21 +858,40 @@ export default function ChatApp({
             }));
           }}
           onNewChat={() => initializeTabConversation(activeTab)}
+          mode={isClaimsWorkspace ? "claims" : "default"}
         />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex-1 overflow-hidden">
-          <ChatArea conversation={currentConversation} isLoading={isLoading} />
+          <ChatArea
+            conversation={currentConversation}
+            isLoading={isLoading}
+            title={isClaimsWorkspace ? "SageSure Claims" : TabConfigs[activeTab].title}
+            emptyTitle={isClaimsWorkspace ? "Claims workspace" : `Welcome to ${TabConfigs[activeTab].title}`}
+            emptyDescription={
+              isClaimsWorkspace
+                ? "Summarize claim facts, find missing information, prepare adjuster notes, and draft customer-ready updates."
+                : TabConfigs[activeTab].description
+            }
+          />
         </div>
 
         <div className="border-t bg-white">
           <MessageInput
             onSendMessage={handleSendMessage}
             disabled={isLoading}
+            placeholder={
+              isClaimsWorkspace
+                ? "Paste claim context or ask for a summary, next action, missing docs, or customer update..."
+                : "Ask SageSure AI about this workflow..."
+            }
+            contextLabel={isClaimsWorkspace ? "Claims workspace • Session-aware" : "SageSure AI • Secure & confidential"}
           />
         </div>
       </div>
+
+      {isClaimsWorkspace && <ClaimsAssistantPanel />}
     </div>
   );
 }

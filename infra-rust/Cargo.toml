@@ -1,0 +1,14 @@
+[package]
+name = "sageinfra"
+version = "0.1.0"
+edition = "2024"
+description = "Dry-run Rust CLI for reconciling SageSure AzureDev Terraform and Kubernetes deployment assets"
+license = "UNLICENSED"
+
+[lib]
+name = "sageinfra"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sageinfra"
+path = "src/main.rs"

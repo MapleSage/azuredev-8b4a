@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../lib/msal-auth-context';
+import { clearRedirectLoopData } from '../../lib/utils/redirect-loop-detector';
 import LoginButton from './LoginButton';
 
 interface EnterpriseLoginPageProps {
@@ -7,7 +8,7 @@ interface EnterpriseLoginPageProps {
 }
 
 export const EnterpriseLoginPage: React.FC<EnterpriseLoginPageProps> = ({ onSuccess }) => {
-  const { isLoading, error } = useAuth();
+  const { isLoading, error, clearError } = useAuth();
   const [selectedRole, setSelectedRole] = useState('agent');
 
   const roles = [
@@ -21,12 +22,17 @@ export const EnterpriseLoginPage: React.FC<EnterpriseLoginPageProps> = ({ onSucc
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         {/* Enterprise Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-xl mb-4">
-            <span className="text-white font-bold text-2xl">SI</span>
+        <div className="mb-8 flex flex-col items-center text-center">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/40 bg-white p-2 shadow-xl">
+            <img
+              src="/brand/sagesure-mark.png"
+              alt="SageSure"
+              className="h-10 w-10 object-contain"
+            />
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">SageInsure</h1>
-          <p className="text-blue-200">Enterprise Insurance Platform</p>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.3em] text-blue-200">SageSure</div>
+          <h1 className="mt-1 text-2xl font-bold text-white">Insurance Workspace</h1>
+          <p className="mt-2 text-sm text-blue-200">Enterprise Insurance Platform</p>
         </div>
 
         {/* Login Card */}
@@ -84,10 +90,22 @@ export const EnterpriseLoginPage: React.FC<EnterpriseLoginPageProps> = ({ onSucc
           {/* Error Display */}
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center">
+              <div className="flex items-start">
                 <div className="text-red-400 mr-2">⚠️</div>
-                <div className="text-sm text-red-700">{error}</div>
+                <div className="text-sm text-red-700 flex-1">{error}</div>
               </div>
+              {error.toLowerCase().includes('redirect loop') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearRedirectLoopData();
+                    clearError();
+                  }}
+                  className="mt-3 text-sm font-medium text-red-700 underline hover:text-red-800"
+                >
+                  Reset sign-in state and try again
+                </button>
+              )}
             </div>
           )}
 
@@ -130,8 +148,8 @@ export const EnterpriseLoginPage: React.FC<EnterpriseLoginPageProps> = ({ onSucc
 
           {/* Footer */}
           <div className="mt-6 text-center text-xs text-gray-400">
-            <p>Powered by Azure Active Directory B2C</p>
-            <p className="mt-1">© 2024 SageInsure. All rights reserved.</p>
+            <p>Powered by Microsoft Entra ID</p>
+            <p className="mt-1">© 2026 SageSure. All rights reserved.</p>
           </div>
         </div>
 
