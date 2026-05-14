@@ -72,11 +72,13 @@ See `current-state.md` for full evidence and risk table.
 - [x] Add a `legacy/DO_NOT_APPLY/README.md` explaining why these files are quarantined and that they must not be applied.
 
 ### 0.6 Credential Rotation Assessment ← SECURITY — PARALLEL WITH 0.5
-- [ ] Determine if the Azure Client Secret in `k8s/backend-deployment.yaml` line 29 was ever applied to the cluster or pushed to a shared remote.
-  - If applied: rotate the Azure app registration credential via Azure Portal or `az ad app credential reset`.
-  - If applied: rotate the Azure OpenAI API key via Azure Portal.
-  - Document outcome in `current-state.md` §3 under each affected entry.
+- [x] Determine if the Azure Client Secret/API keys in `k8s/backend-deployment.yaml` and `k8s-manifests/secrets.yaml` were ever pushed to a shared remote or applied to the cluster.
+  - Git assessment: sensitive legacy paths are reachable from `origin/main` via commit `c965333`; `origin/main` still contains the legacy paths until the quarantine commit is pushed/merged.
+  - AKS read-only assessment: context `aks-sageinfra-new-dev01` has `sageinfra-openai-secret` and `sageinfra-search-secret` in namespace `sageinfra-new-agents`, and workloads reference those Secrets.
+  - Outcome: treat affected Azure OpenAI/Search credentials as exposed and rotate before further cluster work. Azure app/client secret exposure also requires rotation if that value is still valid or was used outside the repo.
   - Requirements: 4.3, 10.3
+- [ ] Rotate affected Azure OpenAI/Search keys and any still-valid Azure app/client secret.
+  - External security action; requires explicit operator approval because it can break currently running workloads until references are updated.
 
 ### 0.7 Remove Frontend Auth Bypass
 - [x] Remove or disable `NEXT_PUBLIC_DISABLE_AUTH=true` from `k8s/sageinfra-frontend-dev01.yaml`.

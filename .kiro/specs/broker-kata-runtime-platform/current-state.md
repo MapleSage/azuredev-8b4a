@@ -62,7 +62,9 @@ The following files contain embedded credentials and **must not be applied** and
 
 **Required action:** Rotate any Azure credentials that appear in `k8s/backend-deployment.yaml` if those values have ever been applied to a cluster, pushed to a remote, or shared outside this repo. Do not apply any of these manifests. Move files to `legacy/` with a `DO_NOT_APPLY` header.
 
-**Update:** Secret-bearing/static legacy manifests have been quarantined under `legacy/DO_NOT_APPLY/` with warning headers and a README. This reduces accidental apply risk, but it does **not** complete credential rotation assessment. Any credential that was ever applied, pushed, or shared still needs rotation.
+**Update:** Secret-bearing/static legacy manifests have been quarantined under `legacy/DO_NOT_APPLY/` with warning headers and a README. This reduces accidental apply risk, but it does **not** complete credential rotation.
+
+**Credential exposure assessment update:** Git evidence shows commit `c965333` introduced the sensitive legacy paths and is reachable from `origin/main`, `origin/codex-rust-cargo-port-azuredev`, and `origin/azure-msal-frontend`. `origin/main` still contains `k8s/backend-deployment.yaml` and `k8s-manifests/secrets.yaml` until the quarantine commit is merged/pushed. Read-only AKS inspection of context `aks-sageinfra-new-dev01` also shows `sageinfra-openai-secret` and `sageinfra-search-secret` present in namespace `sageinfra-new-agents`, with workloads referencing those Kubernetes Secrets. Therefore affected Azure OpenAI/Search credentials must be treated as exposed and rotated. The live `sageinfra-frontend` deployment still has `NEXT_PUBLIC_DISABLE_AUTH=true`; repo code has been fixed, but the cluster has not been redeployed from the fixed manifest.
 
 ---
 
