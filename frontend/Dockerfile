@@ -9,7 +9,7 @@ RUN npm ci
 COPY . .
 ENV NODE_ENV=production
 ENV NEXT_PUBLIC_DEVELOPMENT_MODE=false
-ENV NEXT_PUBLIC_DISABLE_AUTH=true
+ENV NEXT_PUBLIC_DISABLE_AUTH=false
 RUN npm run build
 
 FROM node:20-alpine AS runner

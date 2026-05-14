@@ -1,32 +1,30 @@
 import React, { createContext, useContext } from "react";
 
-const devUser = {
-  id: "dev01-user",
-  displayName: "SageSure Dev01",
-  name: "SageSure Dev01",
-  email: "dev01@sagesure.local",
-  username: "dev01@sagesure.local",
-  roles: ["agent", "admin", "claims", "underwriter", "manager"],
-};
+const authError =
+  "Authentication is not configured for this environment. Configure HTTPS, a registered redirect URI, and Entra sign-in before enabling the console.";
 
 const authContext = {
-  isAuthenticated: true,
+  isAuthenticated: false,
   isLoading: false,
-  user: devUser,
-  account: devUser,
-  accounts: [devUser],
-  accessToken: "dev01-auth-disabled",
-  error: null,
-  status: "authenticated",
+  user: null,
+  account: null,
+  accounts: [],
+  accessToken: null,
+  error: authError,
+  status: "not_configured",
   attemptCount: 0,
   lastAttemptTime: 0,
-  sessionId: "dev01-session",
-  signIn: async () => {},
-  login: async () => {},
+  sessionId: null,
+  signIn: async () => {
+    throw new Error(authError);
+  },
+  login: async () => {
+    throw new Error(authError);
+  },
   logout: async () => {},
   signOut: async () => {},
-  getAccessToken: async () => "dev01-auth-disabled",
-  acquireToken: async () => "dev01-auth-disabled",
+  getAccessToken: async () => null,
+  acquireToken: async () => null,
   clearError: () => {},
 };
 
@@ -38,8 +36,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export const useAuth = () => useContext(AuthContext);
 
-export const useUserProfile = () => devUser;
+export const useUserProfile = () => null;
 
-export const useAccessToken = () => "dev01-auth-disabled";
+export const useAccessToken = () => null;
 
-export const useAuthError = () => null;
+export const useAuthError = () => authError;

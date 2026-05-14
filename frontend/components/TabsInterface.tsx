@@ -358,14 +358,15 @@ const TabsInterface: React.FC<TabsInterfaceProps> = ({ signOut, user }) => {
   const activeLabel =
     selectedArea?.items.find((item) => item.id === activeTab)?.label ||
     "Overview";
-  const displayName =
-    user?.name || user?.username || user?.account?.name || "Nick D";
-  const initials = displayName
-    .split(" ")
-    .map((part: string) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const displayName = user?.name || user?.username || user?.account?.name || "Unauthenticated";
+  const initials = user
+    ? displayName
+        .split(" ")
+        .map((part: string) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : "--";
 
   const openArea = (area: ProductArea) => {
     setActiveArea(area.id);

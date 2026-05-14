@@ -281,7 +281,11 @@ class StrandsClient {
     model: string = "gpt-4o-mini"
   ): Promise<StrandsMessage> {
     try {
-      const authToken = this.getAuthToken() || "demo-token";
+      const authToken = this.getAuthToken();
+      if (!authToken) {
+        throw new Error("Authentication is required before sending chat requests.");
+      }
+
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${authToken}`,

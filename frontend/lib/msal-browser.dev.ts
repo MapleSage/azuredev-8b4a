@@ -12,7 +12,7 @@ export const BrowserCacheLocation = {
 export class AuthError extends Error {
   errorCode?: string;
   errorMessage?: string;
-  constructor(errorCode = "dev01_auth_disabled", errorMessage = "Authentication disabled for dev01") {
+  constructor(errorCode = "auth_not_configured", errorMessage = "Authentication is not configured for this environment") {
     super(errorMessage);
     this.name = "AuthError";
     this.errorCode = errorCode;
@@ -27,34 +27,22 @@ export class PublicClientApplication {
   constructor(_config?: unknown) {}
   initialize = async () => {};
   handleRedirectPromise = async () => null;
-  acquireTokenSilent = async (request: any = {}) => ({
-    accessToken: "dev01-auth-disabled",
-    idToken: "dev01-auth-disabled",
-    scopes: request.scopes || [],
-    account: request.account || devAccount,
-    expiresOn: new Date(Date.now() + 60 * 60 * 1000),
-  });
-  acquireTokenRedirect = async () => null;
-  loginRedirect = async () => null;
+  acquireTokenSilent = async () => {
+    throw new InteractionRequiredAuthError();
+  };
+  acquireTokenRedirect = async () => {
+    throw new InteractionRequiredAuthError();
+  };
+  loginRedirect = async () => {
+    throw new InteractionRequiredAuthError();
+  };
   logoutRedirect = async () => null;
   logoutPopup = async () => null;
-  getAllAccounts = () => [devAccount];
-  getActiveAccount = () => devAccount;
+  getAllAccounts = () => [];
+  getActiveAccount = () => null;
   setActiveAccount = () => {};
   addEventCallback = () => "dev01-callback";
   removeEventCallback = () => {};
 }
 
-export const devAccount = {
-  homeAccountId: "dev01-user",
-  localAccountId: "dev01-user",
-  environment: "dev01",
-  tenantId: "dev01",
-  username: "dev01@sagesure.local",
-  name: "SageSure Dev01",
-  idTokenClaims: {
-    name: "SageSure Dev01",
-    preferred_username: "dev01@sagesure.local",
-    roles: ["agent", "admin", "claims", "underwriter", "manager"],
-  },
-};
+export const devAccount = null;

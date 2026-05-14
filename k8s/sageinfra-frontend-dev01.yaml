@@ -41,7 +41,7 @@ spec:
             - name: NEXT_PUBLIC_DEVELOPMENT_MODE
               value: "false"
             - name: NEXT_PUBLIC_DISABLE_AUTH
-              value: "true"
+              value: "false"
           readinessProbe:
             httpGet:
               path: /healthz

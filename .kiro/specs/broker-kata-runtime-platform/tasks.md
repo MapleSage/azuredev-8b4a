@@ -79,14 +79,15 @@ See `current-state.md` for full evidence and risk table.
   - Requirements: 4.3, 10.3
 
 ### 0.7 Remove Frontend Auth Bypass
-- [ ] Remove or disable `NEXT_PUBLIC_DISABLE_AUTH=true` from `k8s/sageinfra-frontend-dev01.yaml`.
-  - If HTTPS hostname for Entra redirect URI is not yet configured, replace with an explicit auth-not-configured blocker page instead of silent bypass.
+- [x] Remove or disable `NEXT_PUBLIC_DISABLE_AUTH=true` from `k8s/sageinfra-frontend-dev01.yaml`.
+  - Set deployed manifest and Docker build default to `NEXT_PUBLIC_DISABLE_AUTH=false`.
+  - Because HTTPS hostname / registered Entra redirect URI is not configured in this repo, `frontend/src/main.tsx` now shows an explicit auth-not-configured blocker instead of silently launching a synthetic-user console.
   - Requirements: 8.1, 8.3
-- [ ] Remove `"demo-token"` hardcoded fallback from `frontend/components/ChatApp.tsx:284`.
-  - Replace with: if no valid session, reject the request and show unauthenticated message.
+- [x] Remove `"demo-token"` hardcoded fallback from `frontend/components/ChatApp.tsx:284`.
+  - If no valid session token exists, chat requests now fail before calling `/api/azure-chat`.
   - Requirements: 8.1
-- [ ] Remove hardcoded `"Nick D"` fallback display name from `frontend/components/TabsInterface.tsx:362`.
-  - If no authenticated user, do not show a fake name.
+- [x] Remove hardcoded `"Nick D"` fallback display name from `frontend/components/TabsInterface.tsx:362`.
+  - If no authenticated user is provided, the UI uses an unauthenticated placeholder instead of a fake person.
   - Requirements: 8.1
 
 ### 0.8 Hide Stub Modules in UI

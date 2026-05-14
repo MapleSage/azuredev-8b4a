@@ -23,7 +23,8 @@ globalScope.process.env = {
   ...(globalScope.process.env || {}),
   NODE_ENV: import.meta.env.MODE,
   NEXT_PUBLIC_DEVELOPMENT_MODE: "false",
-  NEXT_PUBLIC_DISABLE_AUTH: "true",
+  NEXT_PUBLIC_DISABLE_AUTH: "false",
+  NEXT_PUBLIC_AUTH_CONFIGURED: "false",
   NEXT_PUBLIC_AGENTCORE_API_URL: "/api/agentcore",
   NEXT_PUBLIC_FASTAPI_ENDPOINT: "/api",
   NEXT_PUBLIC_API_URL: "/api",
@@ -54,25 +55,45 @@ function FatalShell({ error }: { error: unknown }) {
   );
 }
 
+function AuthNotConfiguredShell() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
+      <div className="max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 px-8 py-7 shadow-xl">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">
+          SageSure Operations Runtime
+        </p>
+        <h1 className="mb-3 text-2xl font-semibold">Authentication required</h1>
+        <p className="mb-4 text-sm leading-6 text-slate-300">
+          This environment is no longer allowed to start with a synthetic user or demo token.
+          Configure the approved HTTPS hostname, registered redirect URI, and Entra sign-in
+          before enabling the operations console.
+        </p>
+        <p className="text-sm text-slate-400">
+          No broker, claim, underwriting, or chat action is available until authentication is configured.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 root.render(<LoadingShell />);
 
-const dev01User = {
-  id: "dev01-user",
-  displayName: "SageSure Dev01",
-  name: "SageSure Dev01",
-  email: "dev01@sagesure.local",
-  roles: ["agent"],
-};
+const authDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
+const authConfigured = process.env.NEXT_PUBLIC_AUTH_CONFIGURED === "true";
 
-import("../components/TabsInterface")
-  .then(({ default: TabsInterface }) => {
-    root.render(
-      <React.StrictMode>
-        <TabsInterface signOut={() => undefined} user={dev01User} />
-      </React.StrictMode>,
-    );
-  })
-  .catch((error) => {
-    console.error("Failed to load SageSure shell", error);
-    root.render(<FatalShell error={error} />);
-  });
+if (authDisabled || !authConfigured) {
+  root.render(<AuthNotConfiguredShell />);
+} else {
+  import("../components/TabsInterface")
+    .then(({ default: TabsInterface }) => {
+      root.render(
+        <React.StrictMode>
+          <TabsInterface signOut={() => undefined} user={null} />
+        </React.StrictMode>,
+      );
+    })
+    .catch((error) => {
+      console.error("Failed to load SageSure shell", error);
+      root.render(<FatalShell error={error} />);
+    });
+}

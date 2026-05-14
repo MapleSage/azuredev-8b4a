@@ -1,5 +1,5 @@
 import React from "react";
-import { PublicClientApplication, devAccount } from "./msal-browser.dev";
+import { PublicClientApplication } from "./msal-browser.dev";
 
 const instance = new PublicClientApplication();
 
@@ -10,15 +10,15 @@ export function MsalProvider({ children }: { children: React.ReactNode }) {
 export function useMsal() {
   return {
     instance,
-    accounts: [devAccount],
+    accounts: [],
     inProgress: "none",
   };
 }
 
 export function useAccount() {
-  return devAccount;
+  return null;
 }
 
 export function useIsAuthenticated() {
-  return true;
+  return false;
 }
