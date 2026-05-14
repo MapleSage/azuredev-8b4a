@@ -14,9 +14,12 @@ const clientEnv = {
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "."),
-    },
+    alias: [
+      { find: "@azure/msal-browser", replacement: path.resolve(__dirname, "lib/msal-browser.dev.ts") },
+      { find: "@azure/msal-react", replacement: path.resolve(__dirname, "lib/msal-react.dev.tsx") },
+      { find: /.*\/lib\/msal-auth-context(\.tsx)?$/, replacement: path.resolve(__dirname, "lib/msal-auth-context.dev.tsx") },
+      { find: "@", replacement: path.resolve(__dirname, ".") },
+    ],
   },
   define: {
     "process.env": JSON.stringify(clientEnv),
@@ -26,6 +29,7 @@ export default defineConfig({
     "process.env.NEXT_PUBLIC_AGENTCORE_API_URL": JSON.stringify(clientEnv.NEXT_PUBLIC_AGENTCORE_API_URL),
     "process.env.NEXT_PUBLIC_FASTAPI_ENDPOINT": JSON.stringify(clientEnv.NEXT_PUBLIC_FASTAPI_ENDPOINT),
     "process.env.NEXT_PUBLIC_API_URL": JSON.stringify(clientEnv.NEXT_PUBLIC_API_URL),
+    global: "globalThis",
   },
   server: {
     port: 3000,
