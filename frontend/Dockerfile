@@ -1,41 +1,35 @@
-# Frontend Dockerfile
-FROM node:18-alpine AS builder
+# Frontend Dockerfile - Vite static app with a tiny API proxy
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci
 
-# Copy source code
 COPY . .
-
-# Build the application
+ENV NODE_ENV=production
+ENV NEXT_PUBLIC_DEVELOPMENT_MODE=false
+ENV NEXT_PUBLIC_DISABLE_AUTH=true
 RUN npm run build
 
-# Production stage
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
-# Create non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 sagefrontend
 
-# Copy built application
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+RUN npm init -y \
+  && npm install express@4.18.2 --omit=dev --ignore-scripts \
+  && npm cache clean --force
 
-USER nextjs
+COPY --from=builder --chown=sagefrontend:nodejs /app/dist ./dist
+COPY --from=builder --chown=sagefrontend:nodejs /app/server.mjs ./server.mjs
 
-# Expose port
+USER sagefrontend
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
-
-# Start the application
-CMD ["node", "server.js"]
+CMD ["node", "server.mjs"]

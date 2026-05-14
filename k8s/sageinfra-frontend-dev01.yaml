@@ -40,29 +40,31 @@ spec:
               value: "45000"
             - name: NEXT_PUBLIC_DEVELOPMENT_MODE
               value: "false"
+            - name: NEXT_PUBLIC_DISABLE_AUTH
+              value: "true"
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
-            initialDelaySeconds: 10
+            initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
-            initialDelaySeconds: 30
+            initialDelaySeconds: 15
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: 50m
+              memory: 128Mi
             limits:
-              cpu: 500m
-              memory: 768Mi
+              cpu: 250m
+              memory: 256Mi
 ---
 apiVersion: v1
 kind: Service
