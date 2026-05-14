@@ -62,6 +62,8 @@ The following files contain embedded credentials and **must not be applied** and
 
 **Required action:** Rotate any Azure credentials that appear in `k8s/backend-deployment.yaml` if those values have ever been applied to a cluster, pushed to a remote, or shared outside this repo. Do not apply any of these manifests. Move files to `legacy/` with a `DO_NOT_APPLY` header.
 
+**Update:** Secret-bearing/static legacy manifests have been quarantined under `legacy/DO_NOT_APPLY/` with warning headers and a README. This reduces accidental apply risk, but it does **not** complete credential rotation assessment. Any credential that was ever applied, pushed, or shared still needs rotation.
+
 ---
 
 ## 4. Frontend

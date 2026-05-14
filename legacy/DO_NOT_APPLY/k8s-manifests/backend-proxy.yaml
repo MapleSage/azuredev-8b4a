@@ -1,0 +1,18 @@
+# DO NOT APPLY
+# Quarantined by Broker/POSP Kata Runtime Platform Phase 0.
+# This legacy manifest may contain or depend on static credentials, localhost/demo routing,
+# shared sageinsure prototype wiring, or non-broker-isolated deployment assumptions.
+# Treat as reference only. Do not apply to any cluster without security review,
+# secret rotation assessment, and replacement with Workload Identity-based manifests.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-proxy
+  namespace: sageinsure-agents
+spec:
+  type: ExternalName
+  externalName: sageinsure-backend.livelyforest-2e320588.eastus2.azurecontainerapps.io
+  ports:
+  - port: 80
+    targetPort: 80

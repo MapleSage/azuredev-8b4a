@@ -59,16 +59,17 @@ See `current-state.md` for full evidence and risk table.
   - Requirements: 11.3
 
 ### 0.5 Quarantine Secret-Bearing Manifests ← IMMEDIATE — DO BEFORE ANY KUBECTL APPLY
-- [ ] Move `k8s/backend-deployment.yaml` to `legacy/DO_NOT_APPLY/backend-deployment.yaml`.
-  - This file contains a plaintext Azure Client Secret (line 29), plaintext Azure OpenAI API key (line 33), and plaintext tenant/client IDs (lines 24–28).
-  - Add a `DO_NOT_APPLY` header comment to the moved file.
+- [x] Move `k8s/backend-deployment.yaml` to `legacy/DO_NOT_APPLY/k8s/backend-deployment.yaml`.
+  - This file contains a plaintext Azure Client Secret, plaintext Azure OpenAI API key, and plaintext tenant/client IDs.
+  - Added a `DO_NOT_APPLY` header comment to the moved file.
   - Requirements: 4.3, 12.4
-- [ ] Move `k8s-manifests/secrets.yaml` to `legacy/DO_NOT_APPLY/secrets.yaml`.
+- [x] Move `k8s-manifests/secrets.yaml` to `legacy/DO_NOT_APPLY/k8s-manifests/secrets.yaml`.
   - Contains base64-encoded (trivially reversible) Azure OpenAI and Azure Search credentials.
   - Requirements: 4.3
-- [ ] Move all remaining files from `k8s-manifests/` that reference `sageinsure`, `localhost`, or static credentials to `legacy/DO_NOT_APPLY/`.
+- [x] Move all remaining files from `k8s-manifests/` that reference `sageinsure`, `localhost`, or static credentials to `legacy/DO_NOT_APPLY/k8s-manifests/`.
+  - Moved: `agents-deployment.yaml`, `backend-deployment.yaml`, `backend-proxy.yaml`, `complete-ingress.yaml`, `frontend-deployment.yaml`, `ingress.yaml`, `mcp-servers.yaml`, and `secrets.yaml`.
   - Requirements: 4.3, 10.3
-- [ ] Add a `legacy/DO_NOT_APPLY/README.md` explaining why these files are quarantined and that they must not be applied.
+- [x] Add a `legacy/DO_NOT_APPLY/README.md` explaining why these files are quarantined and that they must not be applied.
 
 ### 0.6 Credential Rotation Assessment ← SECURITY — PARALLEL WITH 0.5
 - [ ] Determine if the Azure Client Secret in `k8s/backend-deployment.yaml` line 29 was ever applied to the cluster or pushed to a shared remote.
