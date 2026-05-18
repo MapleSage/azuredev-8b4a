@@ -3,7 +3,8 @@ import { ChatSidebar } from "./ChatSidebar";
 import { ChatArea } from "./ChatArea";
 import { MessageInput } from "./MessageInput";
 import SessionManager from "../lib/sessionManager";
-import { useChatApi } from "../lib/api-client";
+import { useChatApi, type WorkspaceModuleResponse } from "../lib/api-client";
+import ModuleConnectionBanner from "./ModuleConnectionBanner";
 import { useAuth, useUserProfile } from "../lib/msal-auth-context";
 
 type Specialist =
@@ -300,6 +301,7 @@ class StrandsClient {
           text: message,
           conversationId: conversationId,
           specialist: specialist,
+          brokerId: window.localStorage.getItem("sageinfra.activeBrokerId") || undefined,
         }),
       });
 
@@ -449,6 +451,8 @@ export default function ChatApp({
   const { isAuthenticated } = useAuth();
   const userProfile = useUserProfile();
   const chatApi = useChatApi();
+  const [moduleContract, setModuleContract] = useState<WorkspaceModuleResponse | null>(null);
+  const [moduleError, setModuleError] = useState<string | null>(null);
 
   // Map tab IDs to specialist IDs (updated for new FastAPI architecture)
   const getSpecialistFromTab = (tabId: string): Specialist => {
@@ -696,10 +700,9 @@ export default function ChatApp({
     },
     [
       activeTab,
+      chatApi,
       sessionManager,
       sessionData.conversationId,
-      strandsClient,
-      provider,
     ]
   );
 
@@ -814,6 +817,37 @@ export default function ChatApp({
     }
   }, [initialSpecialist, activeTab, sessionManager]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const moduleBySpecialist: Record<Specialist, string> = {
+      CLAIMS_CHAT: "claims-chat",
+      UNDERWRITING: "underwriting-workbench",
+      RESEARCH_ASSISTANT: "ai-companion",
+      MARINE_INSURANCE: "ai-companion",
+      CYBER_INSURANCE: "ai-companion",
+      FNOL_PROCESSOR: "fnol-intake",
+      CLAIMS_LIFECYCLE: "claims-lifecycle",
+      POLICY_ASSISTANT: "consumer-policy",
+      CRM_AGENT: "crm-agent",
+      HR_ASSISTANT: "ai-companion",
+      MARKETING_AGENT: "ai-companion",
+      INVESTMENT_RESEARCH: "ai-companion",
+    };
+    chatApi.getWorkspaceModule(moduleBySpecialist[activeTab] || "ai-companion")
+      .then((contract) => {
+        if (!cancelled) {
+          setModuleContract(contract);
+          setModuleError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setModuleError(error instanceof Error ? error.message : "Module contract unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, chatApi]);
+
   // Session persistence - save session data periodically
   useEffect(() => {
     const saveInterval = setInterval(() => {
@@ -867,6 +901,9 @@ export default function ChatApp({
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
+        <div className="border-b bg-slate-50 p-3">
+          <ModuleConnectionBanner contract={moduleContract} error={moduleError} compact />
+        </div>
         <div className="flex-1 overflow-hidden">
           <ChatArea
             conversation={currentConversation}

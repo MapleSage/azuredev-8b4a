@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { useChatApi, type WorkspaceModuleResponse } from "../lib/api-client";
+import ModuleConnectionBanner from "./ModuleConnectionBanner";
+import { useAuth } from "../lib/msal-auth-context";
 
 interface BusinessAgentChatProps {
   agentType: "crm" | "hr" | "marketing" | "investment";
@@ -16,6 +19,10 @@ const BusinessAgentChat: React.FC<BusinessAgentChatProps> = ({ agentType }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { getWorkspaceModule, sendMessage } = useChatApi();
+  const { isAuthenticated } = useAuth();
+  const [moduleContract, setModuleContract] = useState<WorkspaceModuleResponse | null>(null);
+  const [moduleError, setModuleError] = useState<string | null>(null);
 
   const agentConfig = {
     crm: {
@@ -47,6 +54,24 @@ const BusinessAgentChat: React.FC<BusinessAgentChatProps> = ({ agentType }) => {
   const config = agentConfig[agentType];
 
   useEffect(() => {
+    let cancelled = false;
+    const moduleId = agentType === "crm" ? "crm-agent" : agentType;
+    getWorkspaceModule(moduleId)
+      .then((contract) => {
+        if (!cancelled) {
+          setModuleContract(contract);
+          setModuleError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setModuleError(error instanceof Error ? error.message : `${config.title} module contract unavailable`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentType, config.title, getWorkspaceModule]);
+
+  useEffect(() => {
     // Initialize with welcome message
     const welcomeMessage: Message = {
       id: "welcome",
@@ -73,16 +98,12 @@ const BusinessAgentChat: React.FC<BusinessAgentChatProps> = ({ agentType }) => {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/business-agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agent: agentType,
-          query: input,
-        }),
+      if (!isAuthenticated) {
+        throw new Error("Authentication is required before calling this module.");
+      }
+      const data = await sendMessage(input, {
+        specialist: agentType === "crm" ? "CRM_AGENT" : agentType.toUpperCase(),
       });
-
-      const data = await response.json();
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -116,8 +137,11 @@ const BusinessAgentChat: React.FC<BusinessAgentChatProps> = ({ agentType }) => {
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
+      <div className="p-4 pb-0">
+        <ModuleConnectionBanner contract={moduleContract} error={moduleError} compact />
+      </div>
       {/* Header */}
-      <div className={`bg-gradient-to-r ${config.color} text-white p-6`}>
+      <div className={`mt-4 bg-gradient-to-r ${config.color} text-white p-6`}>
         <div className="flex items-center">
           <span className="text-3xl mr-4">{config.icon}</span>
           <div>

@@ -8,17 +8,23 @@ import {
 const isProduction = process.env.NODE_ENV === "production";
 const isDevelopment = !isProduction;
 
-// Check if we're running on the production domain
+// Check if we're running on a known hosted domain
 const isProductionDomain =
   typeof window !== "undefined" &&
-  window.location.hostname.includes("azurestaticapps.net");
+  (window.location.hostname.includes("azurestaticapps.net") ||
+    window.location.hostname === "dev.sagesure.io");
 
 // Production configuration
 const PRODUCTION_CONFIG = {
-  clientId: "27650c1d-91fa-4747-a2fa-1a52813ac5ac",
-  tenantId: "e9394f90-446d-41dd-8c8c-98ac08c5f090",
+  clientId:
+    process.env.NEXT_PUBLIC_AZURE_CLIENT_ID ||
+    "27650c1d-91fa-4747-a2fa-1a52813ac5ac",
+  tenantId:
+    process.env.NEXT_PUBLIC_AZURE_TENANT_ID ||
+    "e9394f90-446d-41dd-8c8c-98ac08c5f090",
   redirectUri:
-    "https://calm-pond-0b4024e0f-preview.eastus2.1.azurestaticapps.net/auth/callback",
+    process.env.NEXT_PUBLIC_REDIRECT_URI ||
+    "https://dev.sagesure.io/auth/callback",
   apiUrl: "/api",
 };
 
@@ -65,7 +71,7 @@ export const msalConfig: Configuration = {
     postLogoutRedirectUri:
       requiredEnvVars.redirectUri?.replace("/auth/callback", "") ||
       (useProductionConfig
-        ? "https://calm-pond-0b4024e0f-preview.eastus2.1.azurestaticapps.net"
+        ? "https://dev.sagesure.io"
         : typeof window !== "undefined"
           ? window.location.origin
           : "http://localhost:3000"),

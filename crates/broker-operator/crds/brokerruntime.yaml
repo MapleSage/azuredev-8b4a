@@ -1,0 +1,113 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: brokerruntimes.platform.sagesure.ai
+spec:
+  group: platform.sagesure.ai
+  scope: Namespaced
+  names:
+    plural: brokerruntimes
+    singular: brokerruntime
+    kind: BrokerRuntime
+    shortNames: [brt]
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: POSP
+          type: string
+          jsonPath: .spec.pospId
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Namespace
+          type: string
+          jsonPath: .status.namespace
+        - name: RuntimeClass
+          type: string
+          jsonPath: .spec.runtime.runtimeClassName
+      schema:
+        openAPIV3Schema:
+          type: object
+          required: [spec]
+          properties:
+            spec:
+              type: object
+              required: [pospId, tenantId, brokerName, lifecycleState, runtime, identity, workspace, knowledgeBase, policy]
+              properties:
+                pospId: { type: string, minLength: 1 }
+                tenantId: { type: string, minLength: 1 }
+                brokerName: { type: string, minLength: 1 }
+                lifecycleState:
+                  type: string
+                  enum: [Active, Suspended, Offboarding]
+                runtime:
+                  type: object
+                  required: [image, runtimeClassName]
+                  properties:
+                    image: { type: string }
+                    runtimeClassName:
+                      type: string
+                      enum: [kata-vm-isolation]
+                    minReplicas: { type: integer, minimum: 0, default: 0 }
+                    maxReplicas: { type: integer, minimum: 1, default: 3 }
+                    idleAfterMinutes: { type: integer, minimum: 1, default: 30 }
+                identity:
+                  type: object
+                  required: [managedIdentityName, serviceAccountName]
+                  properties:
+                    managedIdentityName: { type: string }
+                    serviceAccountName: { type: string, default: broker-runtime }
+                    clientId: { type: string }
+                workspace:
+                  type: object
+                  required: [storageRef, mountPath]
+                  properties:
+                    storageRef: { type: string }
+                    mountPath: { type: string, default: /workspace }
+                knowledgeBase:
+                  type: object
+                  required: [version]
+                  properties:
+                    version: { type: string }
+                    refs:
+                      type: array
+                      items:
+                        type: object
+                        required: [type, name]
+                        properties:
+                          type: { type: string }
+                          name: { type: string }
+                tools:
+                  type: array
+                  items: { type: string }
+                skills:
+                  type: array
+                  items: { type: string }
+                policy:
+                  type: object
+                  required: [dataClassification, networkProfile]
+                  properties:
+                    dataClassification: { type: string }
+                    networkProfile: { type: string }
+            status:
+              type: object
+              properties:
+                phase: { type: string }
+                namespace: { type: string }
+                runtimePod: { type: string, nullable: true }
+                lastActivityTime: { type: string, format: date-time }
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required: [type, status, reason, message, lastTransitionTime]
+                    properties:
+                      type: { type: string }
+                      status: { type: string }
+                      reason: { type: string }
+                      message: { type: string }
+                      lastTransitionTime: { type: string, format: date-time }

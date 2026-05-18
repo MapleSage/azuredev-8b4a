@@ -12,6 +12,7 @@ import SageSureDashboard from "./SageSureDashboard";
 import UnderwritingWorkbench from "./UnderwritingWorkbench";
 import PersistentChatCompanion from "./PersistentChatCompanion";
 import { publishWorkflowEvent } from "../lib/workflow-memory";
+import { useChatApi, type RuntimeStatusData } from "../lib/api-client";
 
 interface TabsInterfaceProps {
   signOut?: () => void;
@@ -33,6 +34,7 @@ interface ModuleItem {
   description?: string;
   roles?: Role[];
   badge?: string;
+  hidden?: boolean;
 }
 
 interface ProductArea {
@@ -62,7 +64,7 @@ const productAreas: ProductArea[] = [
         label: "My Tasks",
         icon: "☑",
         description: "Open work and approvals",
-        badge: "12",
+        hidden: true,
       },
       {
         id: "ai",
@@ -103,7 +105,7 @@ const productAreas: ProductArea[] = [
         label: "Claims Queue",
         icon: "▦",
         description: "Assigned and SLA-risk claims",
-        badge: "31",
+        hidden: true,
       },
     ],
   },
@@ -125,7 +127,7 @@ const productAreas: ProductArea[] = [
         label: "Submission Queue",
         icon: "▦",
         description: "Referrals and exceptions",
-        badge: "18",
+        hidden: true,
       },
       {
         id: "policy",
@@ -153,37 +155,42 @@ const productAreas: ProductArea[] = [
         label: "ScamShield",
         icon: "◈",
         description: "Fraud and phishing triage",
-        badge: "Beta",
+        hidden: true,
       },
       {
         id: "policy-pulse",
         label: "Policy Pulse",
         icon: "📑",
         description: "Coverage clarity and red flags",
+        hidden: true,
       },
       {
         id: "claims-defender",
         label: "Claims Defender",
         icon: "⚖",
         description: "Denial review and complaint support",
+        hidden: true,
       },
       {
         id: "document-vault",
         label: "Document Vault",
         icon: "🗂",
         description: "Evidence, policies, signatures",
+        hidden: true,
       },
       {
         id: "renewals",
         label: "Renewals",
         icon: "🔁",
         description: "Renewal reminders and shopping support",
+        hidden: true,
       },
       {
         id: "buying-assistance",
         label: "Buying Assist",
         icon: "🧭",
         description: "Guided insurance purchase help",
+        hidden: true,
       },
     ],
   },
@@ -226,6 +233,7 @@ const productAreas: ProductArea[] = [
         label: "Producers",
         icon: "◎",
         description: "Agencies, producers, codes",
+        hidden: true,
       },
       {
         id: "marketing",
@@ -351,6 +359,9 @@ const TabsInterface: React.FC<TabsInterfaceProps> = ({ signOut, user }) => {
   const [activeArea, setActiveArea] = useState(roleProfile.defaultArea);
   const [activeTab, setActiveTab] = useState("home");
   const [profileOpen, setProfileOpen] = useState(false);
+  const { getRuntimeStatus } = useChatApi();
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatusData | null>(null);
+  const [runtimeStatusError, setRuntimeStatusError] = useState<string | null>(null);
 
   const selectedArea =
     accessibleAreas.find((area) => area.id === activeArea) ||
@@ -369,9 +380,34 @@ const TabsInterface: React.FC<TabsInterfaceProps> = ({ signOut, user }) => {
     : "--";
 
   const openArea = (area: ProductArea) => {
+    const firstVisibleItem = area.items.find((item) => !item.hidden);
     setActiveArea(area.id);
-    setActiveTab(area.items[0]?.id || "home");
+    setActiveTab(firstVisibleItem?.id || "home");
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRuntimeStatus = async () => {
+      try {
+        const status = await getRuntimeStatus();
+        if (!cancelled) {
+          setRuntimeStatus(status);
+          setRuntimeStatusError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setRuntimeStatus(null);
+          setRuntimeStatusError(error instanceof Error ? error.message : "Runtime status unavailable");
+        }
+      }
+    };
+    loadRuntimeStatus();
+    const interval = window.setInterval(loadRuntimeStatus, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [getRuntimeStatus]);
 
   useEffect(() => {
     publishWorkflowEvent({
@@ -602,7 +638,7 @@ const TabsInterface: React.FC<TabsInterfaceProps> = ({ signOut, user }) => {
             </div>
           </div>
           <div className="flex-1 overflow-auto p-3">
-            {selectedArea?.items.map((item) => {
+            {selectedArea?.items.filter((item) => !item.hidden).map((item) => {
               const isActive = item.id === activeTab;
               return (
                 <button
@@ -635,13 +671,16 @@ const TabsInterface: React.FC<TabsInterfaceProps> = ({ signOut, user }) => {
             })}
           </div>
           <div className="border-t border-slate-100 p-3">
-            <div className="rounded-lg bg-emerald-50 p-3 text-xs text-emerald-800">
+            <div className={`rounded-lg p-3 text-xs ${runtimeStatus?.connected ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
               <div className="flex items-center gap-2 font-bold">
-                <span className="h-2 w-2 rounded-full bg-[#0EA487]" /> dev01
-                online
+                <span className={`h-2 w-2 rounded-full ${runtimeStatus?.connected ? "bg-emerald-500" : "bg-amber-500"}`} /> Runtime status
               </div>
-              <div className="mt-1 text-emerald-700">
-                AgentCore connected locally via secure port-forward.
+              <div className="mt-1">
+                {runtimeStatusError
+                  ? "Auth required or runtime not connected."
+                  : runtimeStatus
+                    ? `${runtimeStatus.activeRuntimes}/${Math.max(runtimeStatus.totalRuntimes, 1)} broker runtimes ready · ${runtimeStatus.tools.length} tools · ${runtimeStatus.skills.length} skills`
+                    : "Loading authenticated runtime status…"}
               </div>
             </div>
           </div>

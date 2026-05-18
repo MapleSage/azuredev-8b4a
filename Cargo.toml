@@ -1,0 +1,36 @@
+[workspace]
+members = [
+  "crates/domain",
+  "crates/infra",
+  "crates/scamshield",
+  "crates/policy-pulse",
+  "crates/claims-defender",
+  "crates/broker-operator",
+  "crates/broker-runtime",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+
+[workspace.dependencies]
+anyhow = "1"
+azure_core = "0.20"
+azure_security_keyvault = "0.20"
+azure_storage_blobs = "0.20"
+bytes = "1"
+chrono = { version = "0.4", features = ["serde", "clock"] }
+envy = "0.4"
+redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+validator = { version = "0.18", features = ["derive"] }

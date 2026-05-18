@@ -104,6 +104,7 @@ class SageInsureAgentCoreClient {
         conversationId: this.sessionId,
         text: query,
         specialist,
+        brokerId: window.localStorage.getItem("sageinfra.activeBrokerId") || undefined,
         context: [],
       }),
     });

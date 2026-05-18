@@ -35,6 +35,21 @@ class SessionManager {
   private static instance: SessionManager;
   private sessionKey = "azins_session";
   private currentSession: SessionData | null = null;
+  private maxStoredMessages = 160;
+
+  private notifySessionChanged(): void {
+    if (typeof window === "undefined") return;
+
+    window.dispatchEvent(
+      new CustomEvent("sagesure:chat-session", {
+        detail: {
+          conversationId: this.currentSession?.conversationId,
+          lastActivity: this.currentSession?.lastActivity,
+          activeSpecialist: this.currentSession?.activeSpecialist,
+        },
+      })
+    );
+  }
 
   static getInstance(): SessionManager {
     if (!SessionManager.instance) {
@@ -59,6 +74,7 @@ class SessionManager {
 
     this.currentSession = session;
     this.saveSession();
+    this.notifySessionChanged();
     return session;
   }
 
@@ -117,6 +133,9 @@ class SessionManager {
     };
 
     session.messages.push(fullMessage);
+    if (session.messages.length > this.maxStoredMessages) {
+      session.messages = session.messages.slice(-this.maxStoredMessages);
+    }
     session.lastActivity = new Date().toISOString();
     session.activeSpecialist = specialist;
 
@@ -133,6 +152,7 @@ class SessionManager {
     context.lastActivity = new Date().toISOString();
 
     this.saveSession();
+    this.notifySessionChanged();
     return fullMessage;
   }
 
@@ -165,6 +185,7 @@ class SessionManager {
     session.activeSpecialist = specialist;
     session.lastActivity = new Date().toISOString();
     this.saveSession();
+    this.notifySessionChanged();
   }
 
   getSessionStats(): {

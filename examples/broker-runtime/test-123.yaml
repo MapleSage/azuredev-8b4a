@@ -1,0 +1,38 @@
+apiVersion: platform.sagesure.ai/v1alpha1
+kind: BrokerRuntime
+metadata:
+  name: broker-test-123
+  namespace: sageinfra-new-agents
+spec:
+  pospId: test-123
+  tenantId: tenant-dev01
+  brokerName: Dev01 Test Broker
+  lifecycleState: Active
+  runtime:
+    image: sageinfranewdev01.azurecr.io/broker-runtime:dev01
+    runtimeClassName: kata-vm-isolation
+    minReplicas: 1
+    maxReplicas: 3
+    idleAfterMinutes: 30
+  identity:
+    managedIdentityName: mi-broker-test-123
+    serviceAccountName: broker-runtime
+  workspace:
+    storageRef: broker-test-123-workspace
+    mountPath: /workspace
+  knowledgeBase:
+    version: "2026-05-16"
+    refs:
+      - type: azure-search-index
+        name: broker-test-123-kb
+  tools:
+    - sagesure-claims-api
+    - sagesure-underwriting-api
+  skills:
+    - fnol
+    - claims-status
+    - underwriting
+    - policy-assistant
+  policy:
+    dataClassification: confidential
+    networkProfile: default-deny-with-platform-egress

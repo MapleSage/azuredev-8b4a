@@ -10,15 +10,25 @@ const clientEnv = {
   NEXT_PUBLIC_AGENTCORE_API_URL: process.env.NEXT_PUBLIC_AGENTCORE_API_URL || "/api/agentcore",
   NEXT_PUBLIC_FASTAPI_ENDPOINT: process.env.NEXT_PUBLIC_FASTAPI_ENDPOINT || "/api",
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "/api",
+  NEXT_PUBLIC_AZURE_CLIENT_ID: process.env.NEXT_PUBLIC_AZURE_CLIENT_ID || "27650c1d-91fa-4747-a2fa-1a52813ac5ac",
+  NEXT_PUBLIC_AZURE_TENANT_ID: process.env.NEXT_PUBLIC_AZURE_TENANT_ID || "e9394f90-446d-41dd-8c8c-98ac08c5f090",
+  NEXT_PUBLIC_REDIRECT_URI: process.env.NEXT_PUBLIC_REDIRECT_URI || "http://localhost:3000/auth/callback",
 };
+
+const useAuthShim = clientEnv.NEXT_PUBLIC_AUTH_CONFIGURED !== "true";
+const authAliases = useAuthShim
+  ? [
+      { find: "@azure/msal-browser", replacement: path.resolve(__dirname, "lib/msal-browser.dev.ts") },
+      { find: "@azure/msal-react", replacement: path.resolve(__dirname, "lib/msal-react.dev.tsx") },
+      { find: /.*\/lib\/msal-auth-context(\.tsx)?$/, replacement: path.resolve(__dirname, "lib/msal-auth-context.dev.tsx") },
+    ]
+  : [];
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: [
-      { find: "@azure/msal-browser", replacement: path.resolve(__dirname, "lib/msal-browser.dev.ts") },
-      { find: "@azure/msal-react", replacement: path.resolve(__dirname, "lib/msal-react.dev.tsx") },
-      { find: /.*\/lib\/msal-auth-context(\.tsx)?$/, replacement: path.resolve(__dirname, "lib/msal-auth-context.dev.tsx") },
+      ...authAliases,
       { find: "@", replacement: path.resolve(__dirname, ".") },
     ],
   },
@@ -31,6 +41,9 @@ export default defineConfig({
     "process.env.NEXT_PUBLIC_AGENTCORE_API_URL": JSON.stringify(clientEnv.NEXT_PUBLIC_AGENTCORE_API_URL),
     "process.env.NEXT_PUBLIC_FASTAPI_ENDPOINT": JSON.stringify(clientEnv.NEXT_PUBLIC_FASTAPI_ENDPOINT),
     "process.env.NEXT_PUBLIC_API_URL": JSON.stringify(clientEnv.NEXT_PUBLIC_API_URL),
+    "process.env.NEXT_PUBLIC_AZURE_CLIENT_ID": JSON.stringify(clientEnv.NEXT_PUBLIC_AZURE_CLIENT_ID),
+    "process.env.NEXT_PUBLIC_AZURE_TENANT_ID": JSON.stringify(clientEnv.NEXT_PUBLIC_AZURE_TENANT_ID),
+    "process.env.NEXT_PUBLIC_REDIRECT_URI": JSON.stringify(clientEnv.NEXT_PUBLIC_REDIRECT_URI),
     global: "globalThis",
   },
   server: {

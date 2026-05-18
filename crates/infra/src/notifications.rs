@@ -17,7 +17,7 @@ pub const NOTIFICATIONS_QUEUE: &str = "notifications:queue";
 #[derive(Clone)]
 pub struct NotificationService {
     config: AppConfig,
-    http:   reqwest::Client,
+    http: reqwest::Client,
 }
 
 impl NotificationService {
@@ -25,7 +25,7 @@ impl NotificationService {
     pub fn new(config: &AppConfig) -> Self {
         Self {
             config: config.clone(),
-            http:   reqwest::Client::new(),
+            http: reqwest::Client::new(),
         }
     }
 
@@ -61,7 +61,7 @@ impl NotificationService {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let text   = resp.text().await.unwrap_or_default();
+            let text = resp.text().await.unwrap_or_default();
             anyhow::bail!("MSG91 returned {status}: {text}");
         }
 
@@ -97,7 +97,7 @@ impl NotificationService {
         // SendGrid returns 202 Accepted on success.
         if !resp.status().is_success() {
             let status = resp.status();
-            let text   = resp.text().await.unwrap_or_default();
+            let text = resp.text().await.unwrap_or_default();
             anyhow::bail!("SendGrid returned {status}: {text}");
         }
 
@@ -113,11 +113,12 @@ impl NotificationService {
     pub async fn enqueue(&self, cache: &CacheClient, payload: Value) -> Result<()> {
         use redis::AsyncCommands;
 
-        let raw = serde_json::to_string(&payload)
-            .context("failed to serialise notification payload")?;
+        let raw =
+            serde_json::to_string(&payload).context("failed to serialise notification payload")?;
 
         let mut conn = cache.clone();
-        conn.lpush::<_, _, ()>(NOTIFICATIONS_QUEUE, &raw)
+        let _: usize = conn
+            .lpush(NOTIFICATIONS_QUEUE, &raw)
             .await
             .context("failed to enqueue notification in Redis")?;
 

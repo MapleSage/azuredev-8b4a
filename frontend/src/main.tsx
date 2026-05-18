@@ -2,6 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { Buffer } from "buffer";
 import process from "process";
+import TabsInterface from "../components/TabsInterface";
+import EnterpriseLoginPage from "../components/auth/EnterpriseLoginPage";
+import { AuthProvider, useAuth, useUserProfile } from "../lib/msal-auth-context";
 import "../styles/globals.css";
 
 const rootElement = document.getElementById("root");
@@ -21,13 +24,16 @@ globalScope.process = globalScope.process || process;
 globalScope.global = globalScope.global || globalThis;
 globalScope.process.env = {
   ...(globalScope.process.env || {}),
-  NODE_ENV: import.meta.env.MODE,
-  NEXT_PUBLIC_DEVELOPMENT_MODE: "false",
-  NEXT_PUBLIC_DISABLE_AUTH: "false",
-  NEXT_PUBLIC_AUTH_CONFIGURED: "false",
-  NEXT_PUBLIC_AGENTCORE_API_URL: "/api/agentcore",
-  NEXT_PUBLIC_FASTAPI_ENDPOINT: "/api",
-  NEXT_PUBLIC_API_URL: "/api",
+  NODE_ENV: process.env.NODE_ENV || import.meta.env.MODE,
+  NEXT_PUBLIC_DEVELOPMENT_MODE: process.env.NEXT_PUBLIC_DEVELOPMENT_MODE || "false",
+  NEXT_PUBLIC_DISABLE_AUTH: process.env.NEXT_PUBLIC_DISABLE_AUTH || "false",
+  NEXT_PUBLIC_AUTH_CONFIGURED: process.env.NEXT_PUBLIC_AUTH_CONFIGURED || "false",
+  NEXT_PUBLIC_AGENTCORE_API_URL: process.env.NEXT_PUBLIC_AGENTCORE_API_URL || "/api/agentcore",
+  NEXT_PUBLIC_FASTAPI_ENDPOINT: process.env.NEXT_PUBLIC_FASTAPI_ENDPOINT || "/api",
+  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "/api",
+  NEXT_PUBLIC_AZURE_CLIENT_ID: process.env.NEXT_PUBLIC_AZURE_CLIENT_ID || "27650c1d-91fa-4747-a2fa-1a52813ac5ac",
+  NEXT_PUBLIC_AZURE_TENANT_ID: process.env.NEXT_PUBLIC_AZURE_TENANT_ID || "e9394f90-446d-41dd-8c8c-98ac08c5f090",
+  NEXT_PUBLIC_REDIRECT_URI: process.env.NEXT_PUBLIC_REDIRECT_URI || window.location.origin + "/auth/callback",
 };
 
 const root = ReactDOM.createRoot(rootElement);
@@ -55,45 +61,32 @@ function FatalShell({ error }: { error: unknown }) {
   );
 }
 
-function AuthNotConfiguredShell() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
-      <div className="max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 px-8 py-7 shadow-xl">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">
-          SageSure Operations Runtime
-        </p>
-        <h1 className="mb-3 text-2xl font-semibold">Authentication required</h1>
-        <p className="mb-4 text-sm leading-6 text-slate-300">
-          This environment is no longer allowed to start with a synthetic user or demo token.
-          Configure the approved HTTPS hostname, registered redirect URI, and Entra sign-in
-          before enabling the operations console.
-        </p>
-        <p className="text-sm text-slate-400">
-          No broker, claim, underwriting, or chat action is available until authentication is configured.
-        </p>
-      </div>
-    </div>
-  );
+function SageSureApp() {
+  const { isAuthenticated, isLoading, signOut } = useAuth();
+  const userProfile = useUserProfile();
+
+  if (isLoading) {
+    return <LoadingShell />;
+  }
+
+  if (!isAuthenticated) {
+    return <EnterpriseLoginPage />;
+  }
+
+  return <TabsInterface signOut={signOut} user={userProfile} />;
 }
 
 root.render(<LoadingShell />);
 
-const authDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
-const authConfigured = process.env.NEXT_PUBLIC_AUTH_CONFIGURED === "true";
-
-if (authDisabled || !authConfigured) {
-  root.render(<AuthNotConfiguredShell />);
-} else {
-  import("../components/TabsInterface")
-    .then(({ default: TabsInterface }) => {
-      root.render(
-        <React.StrictMode>
-          <TabsInterface signOut={() => undefined} user={null} />
-        </React.StrictMode>,
-      );
-    })
-    .catch((error) => {
-      console.error("Failed to load SageSure shell", error);
-      root.render(<FatalShell error={error} />);
-    });
+try {
+  root.render(
+    <React.StrictMode>
+      <AuthProvider>
+        <SageSureApp />
+      </AuthProvider>
+    </React.StrictMode>,
+  );
+} catch (error) {
+  console.error("Failed to load SageSure shell", error);
+  root.render(<FatalShell error={error} />);
 }

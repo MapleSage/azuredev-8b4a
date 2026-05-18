@@ -103,6 +103,7 @@ const SpecialistChatInterface: React.FC<SpecialistChatInterfaceProps> = ({
           text: messageText,
           conversationId: conversationId,
           specialist: specialistId,
+          brokerId: window.localStorage.getItem("sageinfra.activeBrokerId") || undefined,
         }),
       });
 

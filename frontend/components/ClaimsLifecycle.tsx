@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { publishWorkflowEvent } from '../lib/workflow-memory'
+import { useChatApi, type WorkspaceModuleResponse } from '../lib/api-client'
+import ModuleConnectionBanner from './ModuleConnectionBanner'
 
 type LifecycleTab = 'overview' | 'workbench' | 'track'
 
@@ -69,6 +71,26 @@ const priorityTone = (priority: string) => {
 export const ClaimsLifecycle: React.FC = () => {
   const [activeTab, setActiveTab] = useState<LifecycleTab>('overview')
   const [selectedClaim, setSelectedClaim] = useState(claims[0])
+  const { getWorkspaceModule } = useChatApi()
+  const [moduleContract, setModuleContract] = useState<WorkspaceModuleResponse | null>(null)
+  const [moduleError, setModuleError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getWorkspaceModule('claims-lifecycle')
+      .then(contract => {
+        if (!cancelled) {
+          setModuleContract(contract)
+          setModuleError(null)
+        }
+      })
+      .catch(error => {
+        if (!cancelled) setModuleError(error instanceof Error ? error.message : 'Claims lifecycle module contract unavailable')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [getWorkspaceModule])
 
   useEffect(() => {
     publishWorkflowEvent({
@@ -86,6 +108,7 @@ export const ClaimsLifecycle: React.FC = () => {
   return (
     <div className="h-full overflow-hidden bg-[#f5f8fb] p-4 text-slate-900">
       <div className="flex h-full flex-col gap-4 rounded-[24px] border border-slate-200 bg-white/70 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+        <ModuleConnectionBanner contract={moduleContract} error={moduleError} compact />
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#0B8FA3]">Claims operations</div>
@@ -205,12 +228,12 @@ export const ClaimsLifecycle: React.FC = () => {
                   <div className="rounded-[22px] border border-slate-200 bg-white p-4">
                     <h3 className="text-sm font-bold text-slate-950">Next best actions</h3>
                     <div className="mt-3 space-y-2">
-                      {[
+                      {(moduleContract?.actions?.map(action => action.label) || [
                         selectedClaim.next,
                         'Check coverage conditions against loss description',
                         'Confirm customer-preferred communication channel',
                         'Prepare adjuster note before reassignment',
-                      ].map((action, index) => (
+                      ]).map((action, index) => (
                         <label key={action} className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
                           <input type="checkbox" className="mt-1 rounded border-slate-300 text-[#0B8FA3]" defaultChecked={index === 0} />
                           <span>{action}</span>

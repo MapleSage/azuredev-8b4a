@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { type OpsDashboardData, type WorkspaceModulesResponse, useChatApi } from "../lib/api-client";
+import ModuleConnectionBanner from "./ModuleConnectionBanner";
 
 interface SageSureDashboardProps {
   user?: any;
@@ -7,7 +9,7 @@ interface SageSureDashboardProps {
   onNavigate: (tab: string) => void;
 }
 
-const metricsByView: Record<
+const fallbackMetricsByView: Record<
   string,
   Array<{ label: string; value: string; trend: string; tone: string }>
 > = {
@@ -293,7 +295,7 @@ const quickActions = [
   },
 ];
 
-const queueRows = [
+const fallbackQueueRows = [
   {
     object: "CLM-2026-10482",
     insured: "Mason Property Group",
@@ -341,7 +343,7 @@ const queueRows = [
   },
 ];
 
-const aiRecommendations = [
+const fallbackAiRecommendations = [
   "Summarize CLM-2026-10482 and identify missing documents",
   "Draft producer follow-up for UW-2026-7731",
   "Review FNOL-2026-2219 for severity and CAT indicators",
@@ -530,7 +532,7 @@ const consumerWorkflows: Record<
   ],
 };
 
-const analyticsPanels = [
+const fallbackAnalyticsPanels = [
   {
     title: "Claims intake trend",
     subtitle: "Last 7 days · daily",
@@ -554,7 +556,7 @@ const analyticsPanels = [
 function MiniAnalyticsPanel({
   panel,
 }: {
-  panel: (typeof analyticsPanels)[number];
+  panel: (typeof fallbackAnalyticsPanels)[number];
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -625,9 +627,59 @@ export default function SageSureDashboard({
   onNavigate,
 }: SageSureDashboardProps) {
   const displayName = user?.name || user?.username || "there";
-  const metrics = metricsByView[activeView] || metricsByView.home;
+  const { getOpsDashboard, getWorkspaceModules } = useChatApi();
+  const [opsData, setOpsData] = useState<OpsDashboardData | null>(null);
+  const [workspaceData, setWorkspaceData] = useState<WorkspaceModulesResponse | null>(null);
+  const [opsDataError, setOpsDataError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOpsData = async () => {
+      try {
+        const [dashboard, workspace] = await Promise.all([
+          getOpsDashboard(),
+          getWorkspaceModules(),
+        ]);
+        if (!cancelled) {
+          setOpsData(dashboard);
+          setWorkspaceData(workspace);
+          setOpsDataError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOpsDataError(error instanceof Error ? error.message : "Unable to load live operations data");
+        }
+      }
+    };
+
+    loadOpsData();
+    const interval = window.setInterval(loadOpsData, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  const liveMetricsByView = opsData?.metricsByView || {};
+  const metrics = liveMetricsByView[activeView] || fallbackMetricsByView[activeView] || fallbackMetricsByView.home;
+  const analyticsPanels = opsData?.analyticsPanels?.length ? opsData.analyticsPanels : fallbackAnalyticsPanels;
+  const queueRows = opsData?.queueRows?.length ? opsData.queueRows : fallbackQueueRows;
+  const aiRecommendations = opsData?.aiRecommendations?.length ? opsData.aiRecommendations : fallbackAiRecommendations;
   const viewTitle = viewTitles[activeView] || "Operations Home";
   const consumerCards = consumerWorkflows[activeView] || [];
+  const moduleByView: Record<string, string> = {
+    home: "operations",
+    ai: "aiCompanion",
+    "claims-queue": "claimsChat",
+    "uw-queue": "underwritingWorkbench",
+    producer: "crmAgent",
+    "policy-pulse": "policyPulse",
+    renewals: "consumerPolicy",
+    "buying-assistance": "consumerPolicy",
+    governance: "aiCompanion",
+  };
+  const activeContract = workspaceData?.modules?.[moduleByView[activeView] || "operations"] || null;
 
   return (
     <div className="h-full overflow-auto bg-[#f5f8fb]">
@@ -639,6 +691,9 @@ export default function SageSureDashboard({
                 {role}
               </span>
               <span>SageSure Insurance Operations</span>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-500">
+                {opsData?.fabric?.used ? "Microsoft Fabric live" : opsData?.source ? `${opsData.source} live` : "loading live data"}
+              </span>
             </div>
             <h1 className="mt-2 text-3xl font-bold tracking-tight text-[#24384A]">
               {viewTitle}
@@ -647,7 +702,7 @@ export default function SageSureDashboard({
               Welcome back
               {displayName !== "there" ? `, ${displayName.split(" ")[0]}` : ""}.
               This workspace adapts to your role and surfaces the queues, AI
-              actions, and records you can access.
+              actions, and records you can access. Dashboard cards and charts refresh from the broker runtime router, with Microsoft Fabric used when the workspace metrics endpoint is configured.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -674,6 +729,8 @@ export default function SageSureDashboard({
       </div>
 
       <div className="space-y-6 p-7">
+        <ModuleConnectionBanner contract={activeContract} error={opsDataError} />
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {metrics.map((metric) => {
             const tone = toneClasses[metric.tone];

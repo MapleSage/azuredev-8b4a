@@ -1,7 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useChatApi, type WorkspaceModuleResponse } from "../lib/api-client";
+import ModuleConnectionBanner from "./ModuleConnectionBanner";
 
 type JobStatus = "complete" | "processing" | "queued" | "failed";
 type AnalysisTab = "document" | "underwriting";
+type UwStepId = "intake" | "job" | "extraction" | "risk" | "recommendation" | "result";
 
 interface SubmissionJob {
   id: string;
@@ -12,6 +15,8 @@ interface SubmissionJob {
   status: JobStatus;
   riskScore: number;
   premium: string;
+  analysisSummary?: string;
+  currentStep?: UwStepId;
 }
 
 const submissions: SubmissionJob[] = [
@@ -24,6 +29,7 @@ const submissions: SubmissionJob[] = [
     status: "complete",
     riskScore: 72,
     premium: "$184K",
+    currentStep: "result",
   },
   {
     id: "job-a91f-8307",
@@ -34,6 +40,7 @@ const submissions: SubmissionJob[] = [
     status: "processing",
     riskScore: 58,
     premium: "$96K",
+    currentStep: "risk",
   },
   {
     id: "job-7bf4-2210",
@@ -44,6 +51,7 @@ const submissions: SubmissionJob[] = [
     status: "queued",
     riskScore: 41,
     premium: "$42K",
+    currentStep: "intake",
   },
 ];
 
@@ -80,6 +88,45 @@ const riskFindings = [
     text: "Security controls and sprinkler inspection documentation are current.",
   },
 ];
+
+
+const underwritingStages: Array<{ id: UwStepId; label: string; detail: string }> = [
+  { id: "intake", label: "Submission intake", detail: "Broker slip and attachments received" },
+  { id: "job", label: "Create underwriting job", detail: "Durable job reference and review queue created" },
+  { id: "extraction", label: "Extract submission facts", detail: "Applicant, limits, locations, loss history, and coverage facts captured" },
+  { id: "risk", label: "Run risk analysis", detail: "Exposure, authority, appetite, and referral signals evaluated" },
+  { id: "recommendation", label: "Generate recommendation", detail: "Decision rationale and producer follow-up prepared" },
+  { id: "result", label: "Persist result", detail: "Final score, reference, and next actions saved" },
+];
+
+const uwStepIndex = Object.fromEntries(underwritingStages.map((stage, index) => [stage.id, index])) as Record<UwStepId, number>;
+
+function underwritingStepState(job: SubmissionJob | undefined, step: UwStepId) {
+  if (!job) return "waiting";
+  const currentIndex = uwStepIndex[job.currentStep || (job.status === "complete" ? "result" : job.status === "queued" ? "intake" : "risk")];
+  const stepIndex = uwStepIndex[step];
+  if (job.status === "failed") return stepIndex <= currentIndex ? "blocked" : "waiting";
+  if (job.status === "complete") return "complete";
+  if (stepIndex < currentIndex) return "complete";
+  if (stepIndex === currentIndex) return "running";
+  return "waiting";
+}
+
+const uwStageStyles = {
+  complete: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  running: "border-blue-300 bg-blue-50 text-blue-800 shadow-[0_0_0_3px_rgba(37,99,235,0.08)]",
+  blocked: "border-red-200 bg-red-50 text-red-800",
+  waiting: "border-slate-200 bg-slate-50 text-slate-500",
+} as const;
+
+function uwStepLabel(state: keyof typeof uwStageStyles) {
+  if (state === "complete") return "Done";
+  if (state === "running") return "Running now";
+  if (state === "blocked") return "Blocked";
+  return "Waiting";
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const statusStyles: Record<JobStatus, string> = {
   complete: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -121,24 +168,123 @@ function RiskBadge({ value }: { value: number }) {
 }
 
 export default function UnderwritingWorkbench() {
+  const [jobs, setJobs] = useState<SubmissionJob[]>(submissions);
   const [search, setSearch] = useState("");
   const [selectedJobId, setSelectedJobId] = useState(submissions[0].id);
   const [analysisTab, setAnalysisTab] = useState<AnalysisTab>("underwriting");
   const [analysisWidth, setAnalysisWidth] = useState(460);
   const [showToast, setShowToast] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { getWorkspaceModule } = useChatApi();
+  const [moduleContract, setModuleContract] = useState<WorkspaceModuleResponse | null>(null);
+  const [moduleError, setModuleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getWorkspaceModule("underwriting-workbench")
+      .then((contract) => {
+        if (!cancelled) {
+          setModuleContract(contract);
+          setModuleError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setModuleError(error instanceof Error ? error.message : "Underwriting module contract unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getWorkspaceModule]);
 
   const filteredSubmissions = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return submissions;
-    return submissions.filter((job) =>
+    if (!query) return jobs;
+    return jobs.filter((job) =>
       [job.fileName, job.producer, job.insuranceType, job.id].some((value) =>
         value.toLowerCase().includes(query),
       ),
     );
-  }, [search]);
+  }, [jobs, search]);
 
   const selectedJob =
-    submissions.find((job) => job.id === selectedJobId) || submissions[0];
+    jobs.find((job) => job.id === selectedJobId) || jobs[0];
+
+  const markJobStep = (jobId: string, currentStep: UwStepId, status: JobStatus = "processing", summary?: string) => {
+    setJobs((prev) => prev.map((job) => job.id === jobId ? {
+      ...job,
+      status,
+      currentStep,
+      analysisSummary: summary || job.analysisSummary,
+    } : job));
+  };
+
+  const handleUnderwritingUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const jobId = `job-${Date.now()}`;
+    const newJob: SubmissionJob = {
+      id: jobId,
+      fileName: file.name,
+      submittedAt: new Date().toLocaleString(),
+      producer: "Uploaded submission",
+      insuranceType: "Underwriting submission",
+      status: "processing",
+      riskScore: 0,
+      premium: "Pending",
+      analysisSummary: "Submission intake received. Creating underwriting job.",
+      currentStep: "intake",
+    };
+    setJobs((prev) => [newJob, ...prev]);
+    setSelectedJobId(jobId);
+    setShowToast(false);
+    try {
+      await sleep(450);
+      markJobStep(jobId, "job", "processing", "Underwriting job created. Extracting submission facts.");
+      const text = await file.text().catch(() => "");
+      await sleep(450);
+      markJobStep(jobId, "extraction", "processing", "Submission facts are being extracted from the broker slip.");
+      const response = await fetch("/api/underwriting/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: "Analyze this broker slip or underwriting submission. Return risk score, recommendation, key risks, confidence, and referral guidance.",
+          context: text || `${file.name} (${file.type || "unknown type"}, ${file.size} bytes)`,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || `Underwriting analysis failed: ${response.status}`);
+      await sleep(450);
+      markJobStep(jobId, "risk", "processing", "Risk analysis is running against exposure, authority, and appetite signals.");
+      const score = Number(result?.analysis?.score ?? result?.score ?? result?.risk_score ?? 65);
+      const summary = result?.answer || result?.analysis?.final_recommendation || result?.recommendation || "Underwriting analysis completed.";
+      await sleep(450);
+      markJobStep(jobId, "recommendation", "processing", "Recommendation and producer follow-up are being prepared.");
+      await sleep(450);
+      setJobs((prev) => prev.map((job) => job.id === jobId ? {
+        ...job,
+        id: result?.jobId || result?.reference || job.id,
+        status: "complete",
+        currentStep: "result",
+        riskScore: Number.isFinite(score) ? score : 65,
+        premium: "Review",
+        analysisSummary: summary,
+      } : job));
+      setSelectedJobId(result?.jobId || result?.reference || jobId);
+      setShowToast(true);
+    } catch (error) {
+      setJobs((prev) => prev.map((job) => job.id === jobId ? {
+        ...job,
+        status: "failed",
+        currentStep: job.currentStep || "risk",
+        analysisSummary: error instanceof Error ? error.message : "Underwriting analysis failed.",
+      } : job));
+    } finally {
+      event.target.value = "";
+    }
+  };
 
   const startAnalysisResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -203,6 +349,9 @@ export default function UnderwritingWorkbench() {
       )}
 
       <div className="mx-auto max-w-[1500px] p-6">
+        <div className="mb-4">
+          <ModuleConnectionBanner contract={moduleContract} error={moduleError} compact />
+        </div>
         <header className="rounded-2xl border border-[#DDE7F2] bg-white px-5 py-4 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex items-center gap-4">
@@ -227,7 +376,17 @@ export default function UnderwritingWorkbench() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button className="rounded-full bg-[#2563EB] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#1E40AF]">
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.txt,.doc,.docx,.json,.csv"
+                onChange={handleUnderwritingUpload}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-full bg-[#2563EB] px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#1E40AF]"
+              >
                 Upload New
               </button>
               <button className="rounded-full border border-[#0B1F3A] bg-white px-4 py-2 text-sm font-bold text-[#0B1F3A] hover:bg-[#EAF2FF]">
@@ -453,6 +612,37 @@ export default function UnderwritingWorkbench() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    <div className="rounded-2xl border border-[#DDE7F2] bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-bold text-[#172B4D]">Underwriting process</h3>
+                          <p className="mt-1 text-xs text-slate-500">Live six-step job path from intake through persisted result.</p>
+                        </div>
+                        <StatusPill status={selectedJob.status} />
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {underwritingStages.map((stage, index) => {
+                          const state = underwritingStepState(selectedJob, stage.id) as keyof typeof uwStageStyles;
+                          return (
+                            <div key={stage.id} className={`rounded-xl border p-3 transition ${uwStageStyles[state]}`}>
+                              <div className="flex items-start gap-3">
+                                <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${state === "complete" ? "bg-emerald-600 text-white" : state === "running" ? "bg-blue-600 text-white animate-pulse" : state === "blocked" ? "bg-red-600 text-white" : "bg-white text-slate-400"}`}>
+                                  {state === "complete" ? "✓" : index + 1}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex items-start justify-between gap-2">
+                                    <span className="text-sm font-bold">{stage.label}</span>
+                                    <span className="shrink-0 rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{uwStepLabel(state)}</span>
+                                  </span>
+                                  <span className="mt-1 block text-xs leading-5 opacity-80">{stage.detail}</span>
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <div className="rounded-2xl border border-[#DDE7F2] border-l-4 border-l-[#2563EB] bg-white p-5 shadow-sm">
                       <div className="flex items-center justify-between gap-3 border-b border-[#EAF0F6] pb-4">
                         <div>
@@ -467,6 +657,11 @@ export default function UnderwritingWorkbench() {
                         <RiskBadge value={selectedJob.riskScore} />
                       </div>
                       <div className="mt-4 space-y-3">
+                        {selectedJob.analysisSummary && (
+                          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-slate-700">
+                            {selectedJob.analysisSummary}
+                          </div>
+                        )}
                         {riskFindings.map((finding) => (
                           <div
                             key={finding.text}
@@ -488,11 +683,11 @@ export default function UnderwritingWorkbench() {
                         Recommended next actions
                       </h3>
                       <div className="mt-3 grid gap-2">
-                        {[
+                        {(moduleContract?.actions?.map((item) => item.label) || [
                           "Request updated flood mitigation evidence",
                           "Route to manager referral queue",
                           "Draft producer follow-up email",
-                        ].map((action) => (
+                        ]).map((action) => (
                           <button
                             key={action}
                             className="rounded-xl border border-[#DDE7F2] bg-white p-3 text-left text-sm font-semibold text-[#006D84] hover:border-[#7FD1DE] hover:bg-[#EAF7F8]"

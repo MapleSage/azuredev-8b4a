@@ -21,7 +21,7 @@ export default function SageInsureChat() {
       const res = await fetch('/api/azure-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input })
+        body: JSON.stringify({ text: input, message: input, brokerId: window.localStorage.getItem('sageinfra.activeBrokerId') || undefined })
       })
 
       const data = await res.json()

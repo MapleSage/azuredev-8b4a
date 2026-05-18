@@ -1,3 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sageinfra-frontend-caddy
+  namespace: sageinfra-new-agents
+  labels:
+    app.kubernetes.io/name: sageinfra-frontend
+    app.kubernetes.io/part-of: sageinfra
+    app.kubernetes.io/environment: dev01
+data:
+  Caddyfile: |
+    {
+      email admin@sagesure.io
+    }
+
+    dev.sagesure.io {
+      encode gzip
+      reverse_proxy 127.0.0.1:3000
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,6 +30,8 @@ metadata:
 spec:
   replicas: 1
   revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: sageinfra-frontend
@@ -20,7 +42,41 @@ spec:
         app.kubernetes.io/part-of: sageinfra
         app.kubernetes.io/environment: dev01
     spec:
+      nodeSelector:
+        workload: sageinfra
+      volumes:
+        - name: caddy-config
+          configMap:
+            name: sageinfra-frontend-caddy
+        - name: caddy-data
+          emptyDir: {}
+        - name: caddy-state
+          emptyDir: {}
       containers:
+        - name: caddy
+          image: caddy:2.8-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: caddy-http
+              containerPort: 80
+            - name: caddy-https
+              containerPort: 443
+          volumeMounts:
+            - name: caddy-config
+              mountPath: /etc/caddy/Caddyfile
+              subPath: Caddyfile
+              readOnly: true
+            - name: caddy-data
+              mountPath: /data
+            - name: caddy-state
+              mountPath: /config
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 96Mi
         - name: sageinfra-frontend
           image: sageinfranewdev01.azurecr.io/sageinfra-frontend:dev01
           imagePullPolicy: Always
@@ -42,6 +98,10 @@ spec:
               value: "false"
             - name: NEXT_PUBLIC_DISABLE_AUTH
               value: "false"
+            - name: NEXT_PUBLIC_AUTH_CONFIGURED
+              value: "true"
+            - name: NEXT_PUBLIC_REDIRECT_URI
+              value: "https://dev.sagesure.io/auth/callback"
           readinessProbe:
             httpGet:
               path: /healthz
@@ -82,4 +142,7 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: http
+      targetPort: caddy-http
+    - name: https
+      port: 443
+      targetPort: caddy-https

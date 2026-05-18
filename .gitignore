@@ -82,6 +82,7 @@ Desktop.ini
 *.old
 ## Node (just in case mixed project)
 node_modules/
+.claw/
 # Terraform
 .terraform/
 *.tfstate

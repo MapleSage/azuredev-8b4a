@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { publishWorkflowEvent } from "../lib/workflow-memory";
+import { useChatApi, type WorkspaceModuleResponse } from "../lib/api-client";
+import ModuleConnectionBanner from "./ModuleConnectionBanner";
 
 interface DocumentUpload {
   file: File;
   status:
     | "pending"
     | "uploading"
+    | "intake_received"
+    | "evidence_review"
+    | "data_capture"
+    | "needs_info"
+    | "triage"
+    | "handoff_ready"
     | "processing"
     | "extracting"
     | "classifying"
@@ -92,6 +100,18 @@ const formatStatus = (status: DocumentUpload["status"]) => {
       return "Queued";
     case "uploading":
       return "Receiving file";
+    case "intake_received":
+      return "Intake received";
+    case "evidence_review":
+      return "Evidence review";
+    case "data_capture":
+      return "Data capture";
+    case "needs_info":
+      return "Missing info needed";
+    case "triage":
+      return "Triage review";
+    case "handoff_ready":
+      return "Handoff ready";
     case "processing":
       return "Reviewing intake";
     case "extracting":
@@ -99,9 +119,9 @@ const formatStatus = (status: DocumentUpload["status"]) => {
     case "classifying":
       return "Identifying document type";
     case "routing":
-      return "Preparing handoff";
+      return "Routing review";
     case "completed":
-      return "Ready for adjuster";
+      return "Review complete";
     case "error":
       return "Needs attention";
   }
@@ -109,8 +129,12 @@ const formatStatus = (status: DocumentUpload["status"]) => {
 
 const statusClass = (status: DocumentUpload["status"]) => {
   switch (status) {
-    case "completed":
+    case "handoff_ready":
       return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    case "completed":
+      return "bg-blue-50 text-blue-700 ring-blue-200";
+    case "needs_info":
+      return "bg-amber-50 text-amber-700 ring-amber-200";
     case "error":
       return "bg-rose-50 text-rose-700 ring-rose-200";
     case "routing":
@@ -125,26 +149,67 @@ const statusClass = (status: DocumentUpload["status"]) => {
   }
 };
 
+
+const fnolStageIndexByStatus: Partial<Record<DocumentUpload["status"], number>> = {
+  pending: 0,
+  uploading: 0,
+  intake_received: 0,
+  processing: 1,
+  evidence_review: 1,
+  extracting: 2,
+  data_capture: 2,
+  classifying: 2,
+  needs_info: 3,
+  routing: 3,
+  triage: 3,
+  completed: 3,
+  handoff_ready: 4,
+};
+
+function fnolStageState(status: DocumentUpload["status"] | undefined, index: number) {
+  if (!status) return "waiting";
+  const activeIndex = fnolStageIndexByStatus[status] ?? 0;
+  if (status === "error") return index <= activeIndex ? "blocked" : "waiting";
+  if (index < activeIndex || status === "handoff_ready") return "complete";
+  if (index === activeIndex) return "running";
+  return "waiting";
+}
+
+const fnolStageStyles = {
+  complete: "border-emerald-200 bg-emerald-50",
+  running: "border-cyan-300 bg-cyan-50 shadow-[0_0_0_3px_rgba(8,145,178,0.08)]",
+  blocked: "border-rose-200 bg-rose-50",
+  waiting: "border-slate-200 bg-slate-50",
+} as const;
+
+const fnolStageDotStyles = {
+  complete: "bg-emerald-600 text-white",
+  running: "bg-cyan-600 text-white animate-pulse",
+  blocked: "bg-rose-600 text-white",
+  waiting: "bg-white text-slate-400",
+} as const;
+
+function fnolStageLabel(state: keyof typeof fnolStageStyles) {
+  if (state === "complete") return "Done";
+  if (state === "running") return "Running now";
+  if (state === "blocked") return "Blocked";
+  return "Waiting";
+}
+
 const normalizeStepStatus = (stateName: string): DocumentUpload["status"] => {
   const state = String(stateName || "").toLowerCase();
-  if (
-    state.includes("extract") ||
-    state.includes("read") ||
-    state.includes("parse")
-  )
-    return "extracting";
-  if (
-    state.includes("class") ||
-    state.includes("identify") ||
-    state.includes("type")
-  )
-    return "classifying";
-  if (
-    state.includes("route") ||
-    state.includes("store") ||
-    state.includes("handoff")
-  )
-    return "routing";
+  if (state.includes("missing") || state.includes("checklist") || state.includes("needs_info"))
+    return "needs_info";
+  if (state.includes("triage") || state.includes("route"))
+    return "triage";
+  if (state.includes("data") || state.includes("extract") || state.includes("read") || state.includes("parse"))
+    return "data_capture";
+  if (state.includes("evidence") || state.includes("review"))
+    return "evidence_review";
+  if (state.includes("handoff_ready"))
+    return "handoff_ready";
+  if (state.includes("handoff"))
+    return "triage";
   return "processing";
 };
 
@@ -154,13 +219,16 @@ export default function FNOLProcessor() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [queueColumnWidth, setQueueColumnWidth] = useState(320);
   const [workflowColumnWidth, setWorkflowColumnWidth] = useState(340);
+  const { getWorkspaceModule } = useChatApi();
+  const [moduleContract, setModuleContract] = useState<WorkspaceModuleResponse | null>(null);
+  const [moduleError, setModuleError] = useState<string | null>(null);
 
   const selectedUpload = uploads[selectedIndex];
   const completedCount = uploads.filter(
-    (upload) => upload.status === "completed",
+    (upload) => upload.status === "handoff_ready",
   ).length;
   const activeCount = uploads.filter(
-    (upload) => !["completed", "error"].includes(upload.status),
+    (upload) => !["handoff_ready", "error"].includes(upload.status),
   ).length;
 
   const selectedSummary = useMemo(() => {
@@ -198,11 +266,11 @@ export default function FNOLProcessor() {
         setUploads((prev) =>
           prev.map((u, idx) => {
             if (idx === uploadIndex) {
-              if (status.status === "SUCCEEDED") {
+              if (status.status === "SUCCEEDED" && status.currentState === "Adjuster handoff") {
                 clearInterval(pollInterval);
                 const completedUpload = {
                   ...u,
-                  status: "completed" as const,
+                  status: "handoff_ready" as const,
                   claimId: status.output?.claimId,
                   routing: status.output?.status,
                 };
@@ -223,6 +291,14 @@ export default function FNOLProcessor() {
                   },
                 });
                 return completedUpload;
+              } else if (status.status === "NEEDS_INFO") {
+                clearInterval(pollInterval);
+                return {
+                  ...u,
+                  status: "needs_info" as const,
+                  claimId: status.output?.claimId || u.claimId,
+                  routing: status.output?.routing || "claims-intake-missing-info",
+                };
               } else if (status.status === "FAILED") {
                 clearInterval(pollInterval);
                 publishWorkflowEvent({
@@ -332,7 +408,7 @@ export default function FNOLProcessor() {
             idx === uploadIndex
               ? {
                   ...u,
-                  status: result.executionArn ? "processing" : "completed",
+                  status: result.executionArn ? "intake_received" : "evidence_review",
                   classification: result.classification,
                   extractedData: result.extractedData,
                   executionArn: result.executionArn,
@@ -412,9 +488,27 @@ export default function FNOLProcessor() {
       setSelectedIndex(uploads.length - 1);
   }, [selectedIndex, uploads.length]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getWorkspaceModule("fnol-intake")
+      .then((contract) => {
+        if (!cancelled) {
+          setModuleContract(contract);
+          setModuleError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setModuleError(error instanceof Error ? error.message : "FNOL module contract unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getWorkspaceModule]);
+
   return (
     <div className="h-full overflow-hidden bg-[#f5f8fb] p-4 text-slate-900">
       <div className="flex h-full flex-col gap-4 rounded-[24px] border border-slate-200 bg-white/70 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
+        <ModuleConnectionBanner contract={moduleContract} error={moduleError} compact />
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.24em] text-[#0B8FA3]">
@@ -445,7 +539,7 @@ export default function FNOLProcessor() {
               <div className="text-lg font-bold text-emerald-800">
                 {completedCount}
               </div>
-              <div className="text-emerald-700">Ready</div>
+              <div className="text-emerald-700">Handoff ready</div>
             </div>
           </div>
         </div>
@@ -674,7 +768,7 @@ export default function FNOLProcessor() {
                         Missing information checklist
                       </h4>
                       <div className="mt-3 space-y-2">
-                        {missingInfoChecklist.map((item, index) => (
+                        {(moduleContract?.actions?.map((item) => item.label) || missingInfoChecklist).map((item, index) => (
                           <label
                             key={item}
                             className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700"
@@ -684,7 +778,7 @@ export default function FNOLProcessor() {
                               className="mt-1 rounded border-slate-300 text-[#0B8FA3]"
                               defaultChecked={
                                 index <
-                                (selectedUpload.status === "completed" ? 2 : 0)
+                                (["needs_info", "triage", "handoff_ready", "completed"].includes(selectedUpload.status) ? 1 : 0)
                               }
                             />
                             <span>{item}</span>
@@ -709,41 +803,48 @@ export default function FNOLProcessor() {
             <div className="border-b border-slate-100 p-4">
               <h2 className="text-sm font-bold text-slate-950">Workflow</h2>
               <p className="text-xs text-slate-500">
-                Operational path from intake to handoff
+                Operational path; handoff is only final-stage output
               </p>
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-4">
               <div className="space-y-3">
-                {intakeStages.map((stage, index) => (
-                  <div
-                    key={stage.id}
-                    className="relative rounded-2xl border border-slate-200 bg-slate-50 p-4"
-                  >
-                    <div className="flex gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-lg shadow-sm">
-                        {stage.icon}
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-slate-950">
-                          {index + 1}. {stage.label}
+                {intakeStages.map((stage, index) => {
+                  const state = fnolStageState(selectedUpload?.status, index) as keyof typeof fnolStageStyles;
+                  return (
+                    <div
+                      key={stage.id}
+                      className={`relative rounded-2xl border p-4 transition ${fnolStageStyles[state]}`}
+                    >
+                      <div className="flex gap-3">
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold shadow-sm ${fnolStageDotStyles[state]}`}>
+                          {state === "complete" ? "✓" : state === "running" ? "●" : stage.icon}
                         </div>
-                        <div className="mt-1 text-xs leading-5 text-slate-600">
-                          {stage.detail}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-sm font-bold text-slate-950">
+                              {index + 1}. {stage.label}
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${state === "running" ? "bg-cyan-600 text-white" : state === "complete" ? "bg-emerald-600 text-white" : state === "blocked" ? "bg-rose-600 text-white" : "bg-white text-slate-500"}`}>
+                              {fnolStageLabel(state)}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs leading-5 text-slate-600">
+                            {stage.detail}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-4 rounded-[22px] border border-cyan-100 bg-cyan-50 p-4">
                 <h3 className="text-sm font-bold text-cyan-950">
-                  Adjuster handoff draft
+                  Handoff rules
                 </h3>
                 <p className="mt-2 text-sm leading-6 text-cyan-900">
-                  Summarize the insured, loss facts, damages, open questions,
-                  and recommended next action. The global AI companion can turn
-                  this context into an adjuster note or customer update.
+                  Do not mark an upload ready for adjuster until evidence review,
+                  data capture, missing-information checks, and triage are complete.
                 </p>
               </div>
             </div>

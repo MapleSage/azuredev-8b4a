@@ -1,0 +1,4 @@
+version: "2026-05-16"
+refs:
+  - type: azure-search-index
+    name: broker-test-123-kb

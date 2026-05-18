@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import axios, {
   AxiosInstance,
   AxiosRequestConfig,
@@ -6,7 +7,6 @@ import axios, {
 } from "axios";
 import { useAuth } from "./msal-auth-context";
 import { environmentConfig } from "./msal-config";
-import { AuthErrorType } from "./types/auth";
 import { retryWithBackoff, logAuthEvent } from "./utils/auth-utils";
 
 /**
@@ -36,7 +36,119 @@ export interface ChatRequest {
   text: string;
   conversationId?: string;
   specialist?: string;
+  brokerId?: string;
   context?: Array<{ role: string; content: string }>;
+}
+
+export interface BrokerIdentityResponse {
+  userId: string;
+  brokers: string[];
+}
+
+export interface DashboardMetric {
+  label: string;
+  value: string;
+  trend: string;
+  tone: string;
+}
+
+export interface DashboardAnalyticsPanel {
+  title: string;
+  subtitle: string;
+  value: string;
+  delta: string;
+  stroke: string;
+  fill: string;
+  points: string;
+}
+
+export interface DashboardQueueRow {
+  object: string;
+  insured: string;
+  type: string;
+  status: string;
+  owner: string;
+  priority: string;
+  updated: string;
+}
+
+export interface OpsDashboardData {
+  source: string;
+  updatedAt: string;
+  fabric?: { configured: boolean; used: boolean };
+  metricsByView?: Record<string, DashboardMetric[]>;
+  analyticsPanels?: DashboardAnalyticsPanel[];
+  queueRows?: DashboardQueueRow[];
+  aiRecommendations?: string[];
+}
+
+export interface ModuleConnection {
+  id: string;
+  connected: boolean;
+  endpointConfigured: boolean;
+  endpointUrl?: string | null;
+  fallback?: string | null;
+  status: "endpoint-configured" | "runtime-fallback" | "not-connected" | string;
+  [key: string]: any;
+}
+
+export interface WorkspaceAction {
+  id: string;
+  label: string;
+  prompt: string;
+  enabled: boolean;
+}
+
+export interface WorkspaceRecord {
+  kind: string;
+  id: string;
+  title: string;
+  status: string;
+  owner: string;
+  priority: string;
+  summary?: string;
+}
+
+export interface WorkspaceModuleContract {
+  title: string;
+  connection: ModuleConnection;
+  summary: Record<string, any>;
+  records: WorkspaceRecord[];
+  actions: WorkspaceAction[];
+}
+
+export interface RuntimeStatusData {
+  connected: boolean;
+  brokerRuntimeRouterUrl: string;
+  health?: any;
+  activeRuntimes: number;
+  totalRuntimes: number;
+  tools: string[];
+  skills: string[];
+}
+
+export interface WorkspaceModulesResponse {
+  source: string;
+  updatedAt: string;
+  router: RuntimeStatusData;
+  modules: Record<string, WorkspaceModuleContract>;
+}
+
+export interface WorkspaceModuleResponse extends WorkspaceModuleContract {
+  source: string;
+  updatedAt: string;
+  router: RuntimeStatusData;
+  moduleId: string;
+}
+
+export interface WorkspaceActionResponse {
+  moduleId: string;
+  action: WorkspaceAction;
+  specialist: string;
+  prompt: string;
+  connection: ModuleConnection;
+  status: string;
+  timestamp: string;
 }
 
 /**
@@ -49,6 +161,7 @@ export interface ChatResponse {
   confidence: number;
   status: string;
   conversationId: string;
+  brokerId?: string;
   timestamp: string;
   user?: string;
 }
@@ -190,7 +303,7 @@ class AuthenticatedApiClient {
     if (error.response?.data) {
       const responseData = error.response.data as any;
       apiError.message =
-        responseData.message || responseData.detail || apiError.message;
+        responseData.message || responseData.detail || responseData.error || apiError.message;
       apiError.code = responseData.code;
       apiError.details = responseData.details;
     } else if (error.message) {
@@ -254,11 +367,40 @@ class AuthenticatedApiClient {
     return this.get("/auth/status");
   }
 
+  async getAuthorizedBrokers(): Promise<BrokerIdentityResponse> {
+    return this.get("/me/brokers");
+  }
+
+  async getOpsDashboard(): Promise<OpsDashboardData> {
+    return this.get("/dashboard/ops");
+  }
+
+  async getRuntimeStatus(): Promise<RuntimeStatusData> {
+    return this.get("/runtime/status");
+  }
+
+  async getWorkspaceModules(): Promise<WorkspaceModulesResponse> {
+    return this.get("/workspace/modules");
+  }
+
+  async getWorkspaceModule(moduleId: string): Promise<WorkspaceModuleResponse> {
+    return this.get(`/workspace/modules/${encodeURIComponent(moduleId)}`);
+  }
+
+  async prepareWorkspaceAction(
+    moduleId: string,
+    actionId: string,
+    prompt?: string,
+  ): Promise<WorkspaceActionResponse> {
+    return this.post(`/workspace/modules/${encodeURIComponent(moduleId)}/actions`, { actionId, prompt });
+  }
+
   /**
-   * Chat endpoint
+   * Chat endpoint. Keep browser compatibility with the Vite/Express
+   * /api/azure-chat proxy, which in turn preserves AgentCore /chat payloads.
    */
   async sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
-    return this.post<ChatResponse>("/chat", request);
+    return this.post<ChatResponse>("/azure-chat", request);
   }
 
   /**
@@ -293,17 +435,20 @@ class AuthenticatedApiClient {
 export const useApiClient = () => {
   const { getAccessToken, signOut } = useAuth();
 
-  const apiClient = new AuthenticatedApiClient(
-    environmentConfig.apiBaseUrl,
-    getAccessToken,
-    () => {
-      // Handle auth errors by redirecting to login
-      console.warn("Authentication error detected, signing out...");
-      signOut();
-    }
-  );
+  const handleAuthError = useCallback(() => {
+    console.warn("Authentication error detected, signing out...");
+    signOut();
+  }, [signOut]);
 
-  return apiClient;
+  return useMemo(
+    () =>
+      new AuthenticatedApiClient(
+        environmentConfig.apiBaseUrl,
+        getAccessToken,
+        handleAuthError,
+      ),
+    [getAccessToken, handleAuthError],
+  );
 };
 
 /**
@@ -312,18 +457,27 @@ export const useApiClient = () => {
 export const useChatApi = () => {
   const apiClient = useApiClient();
 
+  const getAuthorizedBrokers = () => apiClient.getAuthorizedBrokers();
+
   const sendMessage = async (
     text: string,
     options: {
       specialist?: string;
       conversationId?: string;
+      brokerId?: string;
       context?: Array<{ role: string; content: string }>;
     } = {}
   ): Promise<ChatResponse> => {
+    const brokerId =
+      options.brokerId ||
+      (typeof window !== "undefined" ? window.localStorage.getItem("sageinfra.activeBrokerId") || undefined : undefined) ||
+      (await getAuthorizedBrokers()).brokers[0];
+
     const request: ChatRequest = {
       text,
       conversationId: options.conversationId || `conv_${Date.now()}`,
       specialist: options.specialist || "GENERAL",
+      brokerId,
       context: options.context || [],
     };
 
@@ -338,6 +492,13 @@ export const useChatApi = () => {
     sendMessage,
     healthCheck: () => apiClient.healthCheck(),
     getAuthStatus: () => apiClient.getAuthStatus(),
+    getAuthorizedBrokers,
+    getOpsDashboard: () => apiClient.getOpsDashboard(),
+    getRuntimeStatus: () => apiClient.getRuntimeStatus(),
+    getWorkspaceModules: () => apiClient.getWorkspaceModules(),
+    getWorkspaceModule: (moduleId: string) => apiClient.getWorkspaceModule(moduleId),
+    prepareWorkspaceAction: (moduleId: string, actionId: string, prompt?: string) =>
+      apiClient.prepareWorkspaceAction(moduleId, actionId, prompt),
   };
 };
 

@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useChatApi, type WorkspaceModuleResponse } from "../lib/api-client";
+import { useAuth } from "../lib/msal-auth-context";
+import ModuleConnectionBanner from "./ModuleConnectionBanner";
 
 interface Message {
   id: string;
@@ -45,7 +48,28 @@ How can I help you with your insurance policy today?`,
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState("john_doe");
+  const [selectedCustomer, setSelectedCustomer] = useState("current-user");
+  const { getWorkspaceModule, sendMessage } = useChatApi();
+  const { isAuthenticated } = useAuth();
+  const [moduleContract, setModuleContract] = useState<WorkspaceModuleResponse | null>(null);
+  const [moduleError, setModuleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getWorkspaceModule("consumer-policy")
+      .then((contract) => {
+        if (!cancelled) {
+          setModuleContract(contract);
+          setModuleError(null);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setModuleError(error instanceof Error ? error.message : "Consumer policy module contract unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getWorkspaceModule]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,28 +87,25 @@ How can I help you with your insurance policy today?`,
     setIsLoading(true);
 
     try {
-      // Call policy assistant API
-      const response = await fetch("/api/policy-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: input,
-          customer: selectedCustomer,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+      if (!isAuthenticated) {
+        throw new Error("Authentication is required before calling policy assistance.");
       }
-
-      const data = await response.json();
+      const data = await sendMessage(input, {
+        specialist: "POLICY_ASSISTANT",
+        context: [
+          {
+            role: "system",
+            content: `Consumer policy workspace customer selector: ${selectedCustomer}. Use the configured policy contract; if live policy retrieval is not connected, state that clearly.`,
+          },
+        ],
+      });
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
         content: data.response || "No response received",
         timestamp: new Date(),
-        citations: data.citations,
+        citations: [],
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -103,6 +124,9 @@ How can I help you with your insurance policy today?`,
 
   return (
     <div className="h-full flex flex-col bg-white">
+      <div className="flex-shrink-0 bg-gray-50 p-4">
+        <ModuleConnectionBanner contract={moduleContract} error={moduleError} compact />
+      </div>
       {/* Header */}
       <div className="flex-shrink-0 bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6">
         <div className="flex items-center justify-between">
@@ -123,8 +147,8 @@ How can I help you with your insurance policy today?`,
               onChange={(e) => setSelectedCustomer(e.target.value)}
               className="text-sm bg-white/20 text-white border border-white/30 rounded px-3 py-2"
             >
-              <option value="john_doe">John Doe</option>
-              <option value="john_smith">John Smith</option>
+              <option value="current-user">Current Entra user</option>
+              <option value="policy-context">Policy context from workspace</option>
             </select>
             <div className="text-xs bg-white/20 px-2 py-1 rounded">
               Private dev01
